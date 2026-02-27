@@ -148,7 +148,7 @@ export default function PublicStatusPage({ params }) {
                   )}
                 </div>
               </div>
-              <UptimeBar monitorId={monitor.id} compact />
+              <UptimeBar days={monitor.daily_uptime} compact />
             </div>
           );
         })}

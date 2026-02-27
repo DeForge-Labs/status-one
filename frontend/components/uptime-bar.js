@@ -9,23 +9,19 @@ export default function UptimeBar({ days = [], checks, compact = false, monitorI
   const barHeight = compact ? 'h-6' : 'h-8';
   const numBars = compact ? 45 : 90;
 
-  if (!data || data.length === 0) {
-    return (
-      <div className={clsx('flex items-center gap-[2px]', className)}>
-        {Array(numBars).fill(0).map((_, i) => (
-          <div key={i} className={clsx('flex-1 rounded-[2px] bg-zinc-200 dark:bg-zinc-800', barHeight)} />
-        ))}
-      </div>
-    );
-  }
-
   const displayData = data.slice(compact ? -45 : -90);
+  const padCount = Math.max(0, numBars - displayData.length);
 
   return (
     <div className={clsx('group relative', className)}>
       <div className="flex items-center gap-[2px]">
+        {/* Empty padding bars for days with no data */}
+        {Array(padCount).fill(0).map((_, i) => (
+          <div key={`pad-${i}`} className={clsx('flex-1 rounded-[2px] bg-zinc-200 dark:bg-zinc-800', barHeight)} />
+        ))}
+        {/* Data bars */}
         {displayData.map((day, i) => (
-          <div key={i} className="relative flex-1 group/day">
+          <div key={`day-${i}`} className="relative flex-1 group/day">
             <div
               className={clsx(
                 'rounded-[2px] transition-all duration-150 hover:scale-y-125 hover:opacity-90 cursor-pointer',
@@ -48,7 +44,7 @@ export default function UptimeBar({ days = [], checks, compact = false, monitorI
       </div>
       {!compact && (
         <div className="flex justify-between mt-1">
-          <span className="text-xs text-[var(--color-text-tertiary)]">{displayData.length} days ago</span>
+          <span className="text-xs text-[var(--color-text-tertiary)]">{numBars} days ago</span>
           <span className="text-xs text-[var(--color-text-tertiary)]">Today</span>
         </div>
       )}

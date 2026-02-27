@@ -57,6 +57,7 @@ export default function StatusPageEditorPage({ params }) {
         show_values: sp.show_values !== false,
         header_text: sp.header_text || '',
         footer_text: sp.footer_text || '',
+        custom_css: sp.custom_css || '',
       });
       setPageMonitors(sp.monitors || []);
       setMessages(msgs.messages || []);
@@ -180,6 +181,7 @@ export default function StatusPageEditorPage({ params }) {
             </Select>
             <Input label="Header Text" placeholder="Welcome to our status page" value={form.header_text} onChange={e => setForm({ ...form, header_text: e.target.value })} />
             <Input label="Footer Text" placeholder="© 2025 Company" value={form.footer_text} onChange={e => setForm({ ...form, footer_text: e.target.value })} />
+            <Textarea label="Custom CSS" placeholder="/* Add custom styles here */\nbody { font-family: sans-serif; }" value={form.custom_css} onChange={e => setForm({ ...form, custom_css: e.target.value })} rows={6} className="font-mono text-xs" />
             <label className="flex items-center gap-3 cursor-pointer">
               <input type="checkbox" checked={form.published} onChange={e => setForm({ ...form, published: e.target.checked })} className="rounded" />
               <span className="text-sm text-[var(--color-text)]">Published</span>

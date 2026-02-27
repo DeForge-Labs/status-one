@@ -25,11 +25,17 @@ router.get("/status/:slug", (req, res) => {
 
   const pageMonitors = StatusPage.getMonitors(page.id);
 
-  // Get current status for each monitor
+  // Get current status for each monitor (including 30-day daily uptime)
   const monitors = pageMonitors.map((pm) => {
     const monitor = Monitor.findById(pm.monitor_id);
     const latest = MonitorCheck.getLatestByMonitorId(pm.monitor_id);
     const uptime90 = MonitorCheck.getUptimePercentage(pm.monitor_id, daysAgo(90));
+
+    const dailyStats = MonitorCheck.getDailyStatsRange(
+      pm.monitor_id,
+      dateToISO(new Date(Date.now() - 30 * 86400000)),
+      dateToISO(new Date())
+    );
 
     return {
       id: pm.monitor_id,
@@ -40,6 +46,15 @@ router.get("/status/:slug", (req, res) => {
       last_check: latest?.created_at || null,
       response_time_ms: page.show_values ? (latest?.response_time_ms || 0) : undefined,
       uptime_90d: uptime90,
+      daily_uptime: dailyStats.map((d) => ({
+        date: d.date,
+        uptime: d.total_checks > 0
+          ? parseFloat((((d.up_count + d.degraded_count) / d.total_checks) * 100).toFixed(2))
+          : 100,
+        avg_response_time: Math.round(d.avg_response_time),
+        total_checks: d.total_checks,
+        down_count: d.down_count,
+      })),
     };
   });
 
