@@ -19,7 +19,7 @@ export default function StatusPagesPage() {
 
   if (loading && !data) return <PageLoader />;
 
-  const pages = data?.status_pages || [];
+  const pages = data?.statusPages || [];
 
   const handleDelete = async () => {
     if (!deleteId) return;
@@ -57,9 +57,9 @@ export default function StatusPagesPage() {
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2">
                     <Globe size={16} className="text-[var(--color-text-tertiary)] flex-shrink-0" />
-                    <h3 className="text-sm font-semibold text-[var(--color-text)] truncate">{page.title}</h3>
-                    {page.is_default && (
-                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-500 font-medium">Default</span>
+                    <h3 className="text-sm font-semibold text-[var(--color-text)] truncate">{page.name}</h3>
+                    {page.published && (
+                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-green-500/10 text-green-500 font-medium">Published</span>
                     )}
                   </div>
                   <div className="flex items-center gap-2 mt-1">
@@ -67,9 +67,7 @@ export default function StatusPagesPage() {
                     <button onClick={() => copySlug(page.slug)} className="p-0.5 hover:bg-[var(--color-bg-tertiary)] rounded transition-colors cursor-pointer">
                       {copied === page.slug ? <Check size={12} className="text-green-500" /> : <Copy size={12} className="text-[var(--color-text-tertiary)]" />}
                     </button>
-                    {page.custom_domain && (
-                      <span className="text-xs text-[var(--color-text-tertiary)]">• {page.custom_domain}</span>
-                    )}
+
                   </div>
                 </div>
                 <div className="flex items-center gap-1">

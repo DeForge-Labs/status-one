@@ -2,7 +2,7 @@
 
 import { useState, useEffect, use } from 'react';
 import Link from 'next/link';
-import { getPublicStatusPage, getPublicStatusPageIncidents } from '@/lib/api';
+import { getPublicStatusPage, getPublicStatusIncidents } from '@/lib/api';
 import Spinner from '@/components/ui/spinner';
 import { IncidentStatusBadge } from '@/components/ui/badge';
 import { relativeTime, formatDate } from '@/lib/utils';
@@ -19,9 +19,9 @@ export default function IncidentHistoryPage({ params }) {
       try {
         const [pg, inc] = await Promise.all([
           getPublicStatusPage(slug),
-          getPublicStatusPageIncidents(slug),
+          getPublicStatusIncidents(slug),
         ]);
-        setPage(pg.status_page || pg);
+        setPage(pg.statusPage);
         setIncidents(inc.incidents || []);
       } catch {}
       setLoading(false);
@@ -40,7 +40,7 @@ export default function IncidentHistoryPage({ params }) {
           <ArrowLeft size={14} /> Back to status
         </Link>
         <h1 className="text-2xl font-bold text-[var(--color-text)]">Incident History</h1>
-        <p className="text-sm text-[var(--color-text-secondary)] mt-1">{page?.title}</p>
+        <p className="text-sm text-[var(--color-text-secondary)] mt-1">{page?.name}</p>
       </div>
 
       {incidents.length === 0 ? (

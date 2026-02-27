@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { createStatusPage, getMonitors } from '@/lib/api';
 import Card from '@/components/ui/card';
 import Input from '@/components/ui/input';
+import Select from '@/components/ui/select';
 import Textarea from '@/components/ui/textarea';
 import Button from '@/components/ui/button';
 import { ArrowLeft } from 'lucide-react';
@@ -14,7 +15,7 @@ import { useEffect } from 'react';
 export default function NewStatusPage() {
   const router = useRouter();
   const [monitors, setMonitors] = useState([]);
-  const [form, setForm] = useState({ title: '', slug: '', description: '', custom_domain: '', logo_url: '', is_default: false });
+  const [form, setForm] = useState({ name: '', slug: '', description: '', logo_url: '', theme: 'light', published: false });
   const [selectedMonitors, setSelectedMonitors] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -28,12 +29,8 @@ export default function NewStatusPage() {
     setError('');
     setLoading(true);
     try {
-      const res = await createStatusPage({
-        ...form,
-        custom_domain: form.custom_domain || undefined,
-        logo_url: form.logo_url || undefined,
-      });
-      router.push(`/status-pages/${res.status_page.id}`);
+      const res = await createStatusPage(form);
+      router.push(`/status-pages/${res.statusPage.id}`);
     } catch (err) {
       setError(err.message);
     } finally {
@@ -58,8 +55,8 @@ export default function NewStatusPage() {
           <Input
             label="Title *"
             placeholder="My Service Status"
-            value={form.title}
-            onChange={e => setForm({ ...form, title: e.target.value, slug: form.slug || generateSlug(e.target.value) })}
+            value={form.name}
+            onChange={e => setForm({ ...form, name: e.target.value, slug: form.slug || generateSlug(e.target.value) })}
             required
           />
           <Input
@@ -81,18 +78,17 @@ export default function NewStatusPage() {
             value={form.logo_url}
             onChange={e => setForm({ ...form, logo_url: e.target.value })}
           />
-          <Input
-            label="Custom Domain"
-            placeholder="status.example.com"
-            value={form.custom_domain}
-            onChange={e => setForm({ ...form, custom_domain: e.target.value })}
-          />
-          <p className="text-xs text-[var(--color-text-tertiary)] -mt-2">
-            Point your domain&apos;s CNAME to this server, then enter it here. The status page will be served on that domain.
-          </p>
+          <Select
+            label="Theme"
+            value={form.theme}
+            onChange={e => setForm({ ...form, theme: e.target.value })}
+          >
+            <option value="light">Light</option>
+            <option value="dark">Dark</option>
+          </Select>
           <label className="flex items-center gap-3 cursor-pointer">
-            <input type="checkbox" checked={form.is_default} onChange={e => setForm({ ...form, is_default: e.target.checked })} className="rounded" />
-            <span className="text-sm text-[var(--color-text)]">Set as default status page</span>
+            <input type="checkbox" checked={form.published} onChange={e => setForm({ ...form, published: e.target.checked })} className="rounded" />
+            <span className="text-sm text-[var(--color-text)]">Publish this status page</span>
           </label>
 
           <div className="flex justify-end gap-3 pt-2">

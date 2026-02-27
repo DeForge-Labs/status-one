@@ -2,7 +2,7 @@
 
 import { useState, useEffect, use } from 'react';
 import Link from 'next/link';
-import { getPublicStatusPage, getPublicStatusPageMonitors, getPublicStatusPageIncidents, getPublicStatusPageMessages } from '@/lib/api';
+import { getPublicStatusPage } from '@/lib/api';
 import UptimeBar from '@/components/uptime-bar';
 import Spinner from '@/components/ui/spinner';
 import { overallStatusInfo, relativeTime, formatMs, uptimeColor } from '@/lib/utils';
@@ -23,22 +23,19 @@ export default function PublicStatusPage({ params }) {
   const [monitors, setMonitors] = useState([]);
   const [incidents, setIncidents] = useState([]);
   const [messages, setMessages] = useState([]);
+  const [overallStatus, setOverallStatus] = useState('operational');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
   useEffect(() => {
     const fetch = async () => {
       try {
-        const [pg, mon, inc, msg] = await Promise.all([
-          getPublicStatusPage(slug),
-          getPublicStatusPageMonitors(slug),
-          getPublicStatusPageIncidents(slug),
-          getPublicStatusPageMessages(slug),
-        ]);
-        setPage(pg.status_page || pg);
-        setMonitors(mon.monitors || []);
-        setIncidents(inc.incidents || []);
-        setMessages(msg.messages || []);
+        const data = await getPublicStatusPage(slug);
+        setPage(data.statusPage);
+        setMonitors(data.monitors || []);
+        setIncidents(data.activeIncidents || []);
+        setMessages(data.messages || []);
+        setOverallStatus(data.overallStatus || 'operational');
       } catch (err) {
         setError('Status page not found');
       }
@@ -69,15 +66,14 @@ export default function PublicStatusPage({ params }) {
     );
   }
 
-  const allStatuses = monitors.map(m => m.current_status || 'unknown');
-  const statusInfo = overallStatusInfo(allStatuses);
-  const StatusIcon = statusIcons[statusInfo.status] || Clock;
+  const statusInfo = overallStatusInfo(overallStatus);
+  const iconMap = { operational: 'up', degraded_performance: 'degraded', major_outage: 'down', partial_outage: 'down' };
+  const StatusIcon = statusIcons[iconMap[overallStatus] || 'unknown'] || Clock;
 
   const messageColors = {
     info: 'bg-blue-500/10 border-blue-500/20 text-blue-600',
     warning: 'bg-yellow-500/10 border-yellow-500/20 text-yellow-600',
-    error: 'bg-red-500/10 border-red-500/20 text-red-600',
-    success: 'bg-green-500/10 border-green-500/20 text-green-600',
+    maintenance: 'bg-purple-500/10 border-purple-500/20 text-purple-600',
   };
 
   return (
@@ -87,7 +83,7 @@ export default function PublicStatusPage({ params }) {
         {page?.logo_url && (
           <img src={page.logo_url} alt={page.title} className="h-10 mx-auto mb-4 object-contain" />
         )}
-        <h1 className="text-2xl font-bold text-[var(--color-text)]">{page?.title || 'Status'}</h1>
+        <h1 className="text-2xl font-bold text-[var(--color-text)]">{page?.name || 'Status'}</h1>
         {page?.description && (
           <p className="text-sm text-[var(--color-text-secondary)] mt-2">{page.description}</p>
         )}
@@ -96,20 +92,11 @@ export default function PublicStatusPage({ params }) {
       {/* Overall Status Banner */}
       <div className={clsx(
         'rounded-xl p-5 mb-8 flex items-center gap-3',
-        statusInfo.status === 'up' && 'bg-green-500/10',
-        statusInfo.status === 'degraded' && 'bg-yellow-500/10',
-        statusInfo.status === 'down' && 'bg-red-500/10',
-        statusInfo.status === 'maintenance' && 'bg-blue-500/10',
-        !['up', 'degraded', 'down', 'maintenance'].includes(statusInfo.status) && 'bg-[var(--color-bg-tertiary)]',
+        statusInfo.bg,
       )}>
         <StatusIcon
           size={24}
-          className={clsx(
-            statusInfo.status === 'up' && 'text-green-500',
-            statusInfo.status === 'degraded' && 'text-yellow-500',
-            statusInfo.status === 'down' && 'text-red-500',
-            statusInfo.status === 'maintenance' && 'text-blue-500',
-          )}
+          className={statusInfo.color}
         />
         <div>
           <p className="text-lg font-semibold text-[var(--color-text)]">{statusInfo.label}</p>
@@ -123,7 +110,7 @@ export default function PublicStatusPage({ params }) {
       {messages.length > 0 && (
         <div className="space-y-3 mb-8">
           {messages.map(msg => (
-            <div key={msg.id} className={clsx('rounded-lg border p-4', messageColors[msg.style] || messageColors.info)}>
+            <div key={msg.id} className={clsx('rounded-lg border p-4', messageColors[msg.type] || messageColors.info)}>
               <p className="font-medium text-sm">{msg.title}</p>
               {msg.body && <p className="text-xs mt-1 opacity-80">{msg.body}</p>}
             </div>
@@ -136,7 +123,7 @@ export default function PublicStatusPage({ params }) {
         {monitors.map(monitor => {
           const status = monitor.current_status || 'unknown';
           const Icon = statusIcons[status] || Clock;
-          const uptime = monitor.uptime_24h ?? monitor.uptime;
+          const uptime = monitor.uptime_90d;
           return (
             <div key={monitor.id} className="rounded-xl bg-[var(--color-surface)] border border-[var(--color-border)] p-4 sm:p-5">
               <div className="flex items-center justify-between mb-3">
@@ -154,14 +141,14 @@ export default function PublicStatusPage({ params }) {
                 </div>
                 <div className="flex items-center gap-3 text-xs text-[var(--color-text-secondary)] flex-shrink-0">
                   {uptime != null && (
-                    <span className={uptimeColor(uptime * 100)}>{(uptime * 100).toFixed(2)}%</span>
+                    <span className={uptimeColor(uptime)}>{uptime.toFixed(2)}%</span>
                   )}
-                  {monitor.avg_response_time != null && (
-                    <span>{formatMs(monitor.avg_response_time)}</span>
+                  {monitor.response_time_ms != null && (
+                    <span>{formatMs(monitor.response_time_ms)}</span>
                   )}
                 </div>
               </div>
-              <UptimeBar monitorId={monitor.id} checks={monitor.daily_stats || monitor.checks} compact />
+              <UptimeBar monitorId={monitor.id} compact />
             </div>
           );
         })}

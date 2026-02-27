@@ -3,7 +3,7 @@
 import { useState, useEffect, use } from 'react';
 import { useRouter } from 'next/navigation';
 import {
-  getStatusPage, updateStatusPage, getStatusPageMonitors, addMonitorToStatusPage,
+  getStatusPage, updateStatusPage, addMonitorToStatusPage,
   removeMonitorFromStatusPage, getStatusPageMessages, addStatusPageMessage,
   deleteStatusPageMessage, getMonitors, deleteStatusPage,
 } from '@/lib/api';
@@ -32,7 +32,7 @@ export default function StatusPageEditorPage({ params }) {
 
   // Form state
   const [form, setForm] = useState({});
-  const [newMessage, setNewMessage] = useState({ title: '', body: '', style: 'info' });
+  const [newMessage, setNewMessage] = useState({ title: '', body: '', type: 'info' });
   const [addMonitorId, setAddMonitorId] = useState('');
   const [showDelete, setShowDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -40,22 +40,25 @@ export default function StatusPageEditorPage({ params }) {
 
   const fetchAll = async () => {
     try {
-      const [pg, mon, msgs, all] = await Promise.all([
+      const [pg, msgs, all] = await Promise.all([
         getStatusPage(id),
-        getStatusPageMonitors(id),
         getStatusPageMessages(id),
         getMonitors(),
       ]);
-      setPageData(pg.status_page);
+      const sp = pg.statusPage;
+      setPageData(sp);
       setForm({
-        title: pg.status_page.title || '',
-        slug: pg.status_page.slug || '',
-        description: pg.status_page.description || '',
-        custom_domain: pg.status_page.custom_domain || '',
-        logo_url: pg.status_page.logo_url || '',
-        is_default: pg.status_page.is_default || false,
+        name: sp.name || '',
+        slug: sp.slug || '',
+        description: sp.description || '',
+        logo_url: sp.logo_url || '',
+        theme: sp.theme || 'light',
+        published: sp.published || false,
+        show_values: sp.show_values !== false,
+        header_text: sp.header_text || '',
+        footer_text: sp.footer_text || '',
       });
-      setPageMonitors(mon.monitors || []);
+      setPageMonitors(sp.monitors || []);
       setMessages(msgs.messages || []);
       setAllMonitors(all.monitors || []);
     } catch {}
@@ -68,11 +71,7 @@ export default function StatusPageEditorPage({ params }) {
     setSaving(true);
     setError('');
     try {
-      await updateStatusPage(id, {
-        ...form,
-        custom_domain: form.custom_domain || undefined,
-        logo_url: form.logo_url || undefined,
-      });
+      await updateStatusPage(id, form);
       await fetchAll();
     } catch (err) {
       setError(err.message);
@@ -83,7 +82,7 @@ export default function StatusPageEditorPage({ params }) {
   const handleAddMonitor = async () => {
     if (!addMonitorId) return;
     try {
-      await addMonitorToStatusPage(id, parseInt(addMonitorId), pageMonitors.length);
+      await addMonitorToStatusPage(id, addMonitorId, pageMonitors.length);
       setAddMonitorId('');
       await fetchAll();
     } catch (err) {
@@ -102,7 +101,7 @@ export default function StatusPageEditorPage({ params }) {
     e.preventDefault();
     try {
       await addStatusPageMessage(id, newMessage);
-      setNewMessage({ title: '', body: '', style: 'info' });
+      setNewMessage({ title: '', body: '', type: 'info' });
       await fetchAll();
     } catch (err) {
       setError(err.message);
@@ -125,7 +124,7 @@ export default function StatusPageEditorPage({ params }) {
   if (loading) return <PageLoader />;
   if (!pageData) return <div className="text-center py-20 text-[var(--color-text-secondary)]">Status page not found</div>;
 
-  const availableMonitors = allMonitors.filter(m => !pageMonitors.some(pm => pm.id === m.id));
+  const availableMonitors = allMonitors.filter(m => !pageMonitors.some(pm => pm.monitor_id === m.id));
 
   return (
     <div className="space-y-6">
@@ -136,7 +135,7 @@ export default function StatusPageEditorPage({ params }) {
             <ArrowLeft size={18} />
           </Link>
           <div>
-            <h1 className="text-xl font-bold text-[var(--color-text)]">{pageData.title}</h1>
+            <h1 className="text-xl font-bold text-[var(--color-text)]">{pageData.name}</h1>
             <p className="text-sm text-[var(--color-text-secondary)]">/status/{pageData.slug}</p>
           </div>
         </div>
@@ -171,17 +170,23 @@ export default function StatusPageEditorPage({ params }) {
       {tab === 'settings' && (
         <Card className="max-w-2xl">
           <div className="space-y-4">
-            <Input label="Title *" value={form.title} onChange={e => setForm({ ...form, title: e.target.value })} required />
+            <Input label="Name *" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} required />
             <Input label="Slug *" value={form.slug} onChange={e => setForm({ ...form, slug: e.target.value })} required />
             <Textarea label="Description" value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} />
             <Input label="Logo URL" placeholder="https://example.com/logo.png" value={form.logo_url} onChange={e => setForm({ ...form, logo_url: e.target.value })} />
-            <Input label="Custom Domain" placeholder="status.example.com" value={form.custom_domain} onChange={e => setForm({ ...form, custom_domain: e.target.value })} />
-            <p className="text-xs text-[var(--color-text-tertiary)] -mt-2">
-              Configure your DNS to point this domain to the frontend server, then enter it here.
-            </p>
+            <Select label="Theme" value={form.theme} onChange={e => setForm({ ...form, theme: e.target.value })}>
+              <option value="light">Light</option>
+              <option value="dark">Dark</option>
+            </Select>
+            <Input label="Header Text" placeholder="Welcome to our status page" value={form.header_text} onChange={e => setForm({ ...form, header_text: e.target.value })} />
+            <Input label="Footer Text" placeholder="© 2025 Company" value={form.footer_text} onChange={e => setForm({ ...form, footer_text: e.target.value })} />
             <label className="flex items-center gap-3 cursor-pointer">
-              <input type="checkbox" checked={form.is_default} onChange={e => setForm({ ...form, is_default: e.target.checked })} className="rounded" />
-              <span className="text-sm text-[var(--color-text)]">Default status page</span>
+              <input type="checkbox" checked={form.published} onChange={e => setForm({ ...form, published: e.target.checked })} className="rounded" />
+              <span className="text-sm text-[var(--color-text)]">Published</span>
+            </label>
+            <label className="flex items-center gap-3 cursor-pointer">
+              <input type="checkbox" checked={form.show_values} onChange={e => setForm({ ...form, show_values: e.target.checked })} className="rounded" />
+              <span className="text-sm text-[var(--color-text)]">Show response time values</span>
             </label>
             <div className="flex justify-end">
               <Button onClick={handleSave} disabled={saving}><Save size={14} /> {saving ? 'Saving...' : 'Save Changes'}</Button>
@@ -200,13 +205,13 @@ export default function StatusPageEditorPage({ params }) {
             ) : (
               <div className="space-y-2">
                 {pageMonitors.map((m, i) => (
-                  <div key={m.id} className="flex items-center justify-between p-3 rounded-lg bg-[var(--color-bg-secondary)]">
+                  <div key={m.monitor_id} className="flex items-center justify-between p-3 rounded-lg bg-[var(--color-bg-secondary)]">
                     <div className="flex items-center gap-3">
                       <Grip size={14} className="text-[var(--color-text-tertiary)]" />
-                      <span className="text-sm text-[var(--color-text)]">{m.name}</span>
-                      <span className="text-xs text-[var(--color-text-tertiary)]">{m.type}</span>
+                      <span className="text-sm text-[var(--color-text)]">{m.display_name || m.monitor_name}</span>
+                      <span className="text-xs text-[var(--color-text-tertiary)]">{m.monitor_type}</span>
                     </div>
-                    <button onClick={() => handleRemoveMonitor(m.id)} className="p-1.5 rounded hover:bg-red-500/10 text-[var(--color-text-secondary)] hover:text-red-500 transition-colors cursor-pointer">
+                    <button onClick={() => handleRemoveMonitor(m.monitor_id)} className="p-1.5 rounded hover:bg-red-500/10 text-[var(--color-text-secondary)] hover:text-red-500 transition-colors cursor-pointer">
                       <X size={14} />
                     </button>
                   </div>
@@ -240,11 +245,10 @@ export default function StatusPageEditorPage({ params }) {
             <form onSubmit={handleAddMessage} className="space-y-3">
               <Input label="Title *" placeholder="Scheduled maintenance" value={newMessage.title} onChange={e => setNewMessage({ ...newMessage, title: e.target.value })} required />
               <Textarea label="Body *" placeholder="We will be performing maintenance..." value={newMessage.body} onChange={e => setNewMessage({ ...newMessage, body: e.target.value })} required />
-              <Select label="Style" value={newMessage.style} onChange={e => setNewMessage({ ...newMessage, style: e.target.value })}>
+              <Select label="Type" value={newMessage.type} onChange={e => setNewMessage({ ...newMessage, type: e.target.value })}>
                 <option value="info">Info</option>
                 <option value="warning">Warning</option>
-                <option value="error">Error</option>
-                <option value="success">Success</option>
+                <option value="maintenance">Maintenance</option>
               </Select>
               <div className="flex justify-end">
                 <Button type="submit"><MessageSquare size={14} /> Post Message</Button>
@@ -257,9 +261,9 @@ export default function StatusPageEditorPage({ params }) {
               <h3 className="text-base font-semibold text-[var(--color-text)] mb-4">Messages</h3>
               <div className="space-y-3">
                 {messages.map(msg => {
-                  const colors = { info: 'bg-blue-500/10 border-blue-500/20', warning: 'bg-yellow-500/10 border-yellow-500/20', error: 'bg-red-500/10 border-red-500/20', success: 'bg-green-500/10 border-green-500/20' };
+                  const colors = { info: 'bg-blue-500/10 border-blue-500/20', warning: 'bg-yellow-500/10 border-yellow-500/20', maintenance: 'bg-purple-500/10 border-purple-500/20' };
                   return (
-                    <div key={msg.id} className={`p-3 rounded-lg border ${colors[msg.style] || colors.info}`}>
+                    <div key={msg.id} className={`p-3 rounded-lg border ${colors[msg.type] || colors.info}`}>
                       <div className="flex items-start justify-between">
                         <div>
                           <p className="text-sm font-medium text-[var(--color-text)]">{msg.title}</p>

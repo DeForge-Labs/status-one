@@ -177,7 +177,6 @@ export const updateProfile = (data) => apiRequest('/auth/me', { method: 'PUT', b
 export const changePassword = (data) => apiRequest('/auth/change-password', { method: 'POST', body: JSON.stringify(data) });
 
 // Status Page helpers (aliases)
-export const getStatusPageMonitors = (id) => apiRequest(`/status-pages/${id}/monitors`);
 export const addMonitorToStatusPage = (id, monitorId, sortOrder) => apiRequest(`/status-pages/${id}/monitors`, { method: 'POST', body: JSON.stringify({ monitor_id: monitorId, sort_order: sortOrder }) });
 export const removeMonitorFromStatusPage = (id, monitorId) => apiRequest(`/status-pages/${id}/monitors/${monitorId}`, { method: 'DELETE' });
 export const addStatusPageMessage = (id, data) => apiRequest(`/status-pages/${id}/messages`, { method: 'POST', body: JSON.stringify(data) });
@@ -198,9 +197,7 @@ export const purgeOldData = (days) => apiRequest('/system/purge-checks', { metho
 const publicFetch = (path) => fetch(`${API_BASE}${path}`).then(r => r.ok ? r.json() : Promise.reject(new Error('Not found')));
 export const getPublicStatus = (slug) => publicFetch(`/public/status/${slug}`);
 export const getPublicStatusPage = (slug) => publicFetch(`/public/status/${slug}`);
-export const getPublicStatusPageMonitors = (slug) => publicFetch(`/public/status/${slug}/monitors`);
 export const getPublicStatusPageIncidents = (slug) => publicFetch(`/public/status/${slug}/incidents`);
-export const getPublicStatusPageMessages = (slug) => publicFetch(`/public/status/${slug}/messages`);
 export const getPublicStatusHistory = (slug, days = 90) => publicFetch(`/public/status/${slug}/history?days=${days}`);
 export const getPublicStatusIncidents = (slug, page = 1, limit = 20) => publicFetch(`/public/status/${slug}/incidents?page=${page}&limit=${limit}`);
 
