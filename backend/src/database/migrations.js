@@ -1,7 +1,7 @@
 const { getDb } = require("./connection");
 const logger = require("../utils/logger");
 
-const SCHEMA_VERSION = 1;
+const SCHEMA_VERSION = 2;
 
 function runMigrations() {
   const db = getDb();
@@ -22,6 +22,12 @@ function runMigrations() {
     migrateV1(db);
     db.run("INSERT INTO schema_version (version) VALUES (1)");
   }
+
+  // if (currentVersion < 2) {
+  //   logger.info("Running migration v2: add custom_domain to status_pages");
+  //   migrateV2(db);
+  //   db.run("INSERT INTO schema_version (version) VALUES (2)");
+  // }
 
   logger.info(`Database schema at version ${SCHEMA_VERSION}`);
 }
@@ -172,6 +178,7 @@ function migrateV1(db) {
       show_values INTEGER DEFAULT 1,
       header_text TEXT DEFAULT '',
       footer_text TEXT DEFAULT '',
+      custom_domain TEXT DEFAULT '',
       created_by TEXT,
       created_at TEXT DEFAULT (datetime('now')),
       updated_at TEXT DEFAULT (datetime('now')),
@@ -312,6 +319,9 @@ function migrateV1(db) {
     "CREATE INDEX IF NOT EXISTS idx_status_pages_slug ON status_pages(slug)"
   );
   db.run(
+    "CREATE UNIQUE INDEX IF NOT EXISTS idx_status_pages_custom_domain ON status_pages(custom_domain) WHERE custom_domain != ''"
+  );
+  db.run(
     "CREATE INDEX IF NOT EXISTS idx_sessions_token ON sessions(token)"
   );
   db.run(
@@ -325,6 +335,13 @@ function migrateV1(db) {
   );
   db.run(
     "CREATE INDEX IF NOT EXISTS idx_monitor_checks_status ON monitor_checks(monitor_id, status)"
+  );
+}
+
+function migrateV2(db) {
+  db.run(`ALTER TABLE status_pages ADD COLUMN custom_domain TEXT DEFAULT ''`);
+  db.run(
+    "CREATE UNIQUE INDEX IF NOT EXISTS idx_status_pages_custom_domain ON status_pages(custom_domain) WHERE custom_domain != ''"
   );
 }
 

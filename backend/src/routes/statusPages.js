@@ -32,7 +32,7 @@ router.get("/:id", authMiddleware, (req, res) => {
 
 // POST /api/status-pages - Create status page
 router.post("/", authMiddleware, (req, res) => {
-  const { name, slug, description, logo_url, custom_css, theme, published, show_values, header_text, footer_text } = req.body;
+  const { name, slug, description, logo_url, custom_css, theme, published, show_values, header_text, footer_text, custom_domain } = req.body;
 
   if (!name || name.trim().length < 1) {
     return res.status(400).json({ error: "Name is required" });
@@ -49,6 +49,14 @@ router.post("/", authMiddleware, (req, res) => {
     return res.status(409).json({ error: "Slug already in use" });
   }
 
+  // Check custom domain uniqueness if provided
+  if (custom_domain && custom_domain.trim()) {
+    const existingDomain = StatusPage.findByCustomDomain(custom_domain.trim());
+    if (existingDomain) {
+      return res.status(409).json({ error: "Custom domain already in use" });
+    }
+  }
+
   const page = StatusPage.create({
     name: sanitizeString(name, 200),
     slug: pageSlug,
@@ -60,6 +68,7 @@ router.post("/", authMiddleware, (req, res) => {
     show_values: show_values !== false,
     header_text: header_text || "",
     footer_text: footer_text || "",
+    custom_domain: custom_domain ? custom_domain.trim() : "",
     created_by: req.user.id,
   });
 
@@ -81,6 +90,18 @@ router.put("/:id", authMiddleware, (req, res) => {
       return res.status(409).json({ error: "Slug already in use" });
     }
     req.body.slug = newSlug;
+  }
+
+  // Check custom domain uniqueness if changing
+  if (req.body.custom_domain !== undefined) {
+    const domain = req.body.custom_domain.trim();
+    if (domain) {
+      const existingDomain = StatusPage.findByCustomDomain(domain);
+      if (existingDomain && existingDomain.id !== page.id) {
+        return res.status(409).json({ error: "Custom domain already in use" });
+      }
+    }
+    req.body.custom_domain = domain;
   }
 
   const updated = StatusPage.update(req.params.id, req.body);

@@ -1,4 +1,4 @@
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000/api';
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
 
 class ApiError extends Error {
   constructor(message, status, data) {
@@ -35,11 +35,8 @@ async function apiRequest(path, options = {}) {
   }
 
   if (response.status === 503) {
-    const data = await response.json();
+    const data = await response.json().catch(() => ({}));
     if (data.needsSetup) {
-      if (typeof window !== 'undefined') {
-        window.location.href = '/setup';
-      }
       throw new ApiError('Setup required', 503, data);
     }
   }
@@ -57,8 +54,18 @@ async function apiRequest(path, options = {}) {
   return response.json();
 }
 
-// Setup
-export const checkSetupStatus = () => apiRequest('/setup/status');
+// Setup — use raw fetch so it never triggers the auth interceptors
+export const checkSetupStatus = async () => {
+  try {
+    const res = await fetch(`${API_BASE}/setup/status`);
+    const data = await res.json();
+    // Backend may return 503 or 200 with needsSetup flag
+    return data;
+  } catch {
+    // Backend unreachable — default to no-setup-needed to avoid false redirect
+    return { needsSetup: false };
+  }
+};
 export const performSetup = (data) => apiRequest('/setup', { method: 'POST', body: JSON.stringify(data) });
 
 // Auth

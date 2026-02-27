@@ -6,13 +6,15 @@ import { useAuth } from '@/contexts/auth';
 import { performSetup } from '@/lib/api';
 import Input from '@/components/ui/input';
 import Button from '@/components/ui/button';
-import { Activity } from 'lucide-react';
+import { Activity, Eye, EyeOff } from 'lucide-react';
 import { PageLoader } from '@/components/ui/spinner';
 
 export default function SetupPage() {
   const router = useRouter();
   const { needsSetup, loading: authLoading, loginWithToken } = useAuth();
   const [form, setForm] = useState({ name: '', email: '', password: '', confirmPassword: '' });
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirm, setShowConfirm] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -79,21 +81,31 @@ export default function SetupPage() {
           />
           <Input
             label="Password"
-            type="password"
+            type={showPassword ? 'text' : 'password'}
             placeholder="Minimum 8 characters"
             value={form.password}
             onChange={(e) => setForm({ ...form, password: e.target.value })}
             required
             minLength={8}
+            suffix={
+              <button type="button" onClick={() => setShowPassword(v => !v)} className="text-[var(--color-text-tertiary)] hover:text-[var(--color-text)] transition-colors cursor-pointer">
+                {showPassword ? <EyeOff size={15} /> : <Eye size={15} />}
+              </button>
+            }
           />
           <Input
             label="Confirm Password"
-            type="password"
+            type={showConfirm ? 'text' : 'password'}
             placeholder="Repeat password"
             value={form.confirmPassword}
             onChange={(e) => setForm({ ...form, confirmPassword: e.target.value })}
             required
             minLength={8}
+            suffix={
+              <button type="button" onClick={() => setShowConfirm(v => !v)} className="text-[var(--color-text-tertiary)] hover:text-[var(--color-text)] transition-colors cursor-pointer">
+                {showConfirm ? <EyeOff size={15} /> : <Eye size={15} />}
+              </button>
+            }
           />
           <Button type="submit" className="w-full" disabled={loading}>
             {loading ? 'Creating account...' : 'Create Admin Account'}

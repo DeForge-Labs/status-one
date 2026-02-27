@@ -7,13 +7,13 @@ const StatusPage = {
     const id = generateId();
     const now = nowISO();
     db.prepare(`
-      INSERT INTO status_pages (id, name, slug, description, logo_url, custom_css, theme, published, show_values, header_text, footer_text, created_by, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO status_pages (id, name, slug, description, logo_url, custom_css, theme, published, show_values, header_text, footer_text, custom_domain, created_by, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       id, data.name, data.slug, data.description || "", data.logo_url || "",
       data.custom_css || "", data.theme || "light", data.published ? 1 : 0,
       data.show_values !== false ? 1 : 0, data.header_text || "", data.footer_text || "",
-      data.created_by || null, now, now
+      data.custom_domain || "", data.created_by || null, now, now
     );
     return this.findById(id);
   },
@@ -51,7 +51,7 @@ const StatusPage = {
     const db = getDb();
     const allowed = [
       "name", "slug", "description", "logo_url", "custom_css", "theme",
-      "published", "show_values", "header_text", "footer_text",
+      "published", "show_values", "header_text", "footer_text", "custom_domain",
     ];
     const sets = [];
     const values = [];
@@ -178,6 +178,16 @@ const StatusPage = {
     return db.prepare(
       "SELECT monitor_id FROM status_page_monitors WHERE status_page_id = ?"
     ).all(statusPageId).map((r) => r.monitor_id);
+  },
+
+  findByCustomDomain(domain) {
+    const db = getDb();
+    const row = db.prepare("SELECT * FROM status_pages WHERE custom_domain = ? AND custom_domain != ''").get(domain);
+    if (row) {
+      row.published = !!row.published;
+      row.show_values = !!row.show_values;
+    }
+    return row;
   },
 };
 

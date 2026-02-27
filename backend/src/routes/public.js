@@ -7,6 +7,15 @@ const Incident = require("../models/incident");
 const { daysAgo, dateToISO } = require("../utils/helpers");
 const { validatePagination } = require("../utils/validators");
 
+// GET /api/public/status/by-domain/:hostname - Lookup status page by custom domain
+router.get("/status/by-domain/:hostname", (req, res) => {
+  const page = StatusPage.findByCustomDomain(req.params.hostname);
+  if (!page || !page.published) {
+    return res.status(404).json({ error: "Status page not found" });
+  }
+  res.json({ slug: page.slug });
+});
+
 // GET /api/public/status/:slug - Public status page data
 router.get("/status/:slug", (req, res) => {
   const page = StatusPage.findBySlug(req.params.slug);
@@ -116,6 +125,55 @@ router.get("/status/:slug/history", (req, res) => {
   });
 
   res.json({ history, days });
+});
+
+// GET /api/public/status/:slug/monitors - Public monitors for a status page
+router.get("/status/:slug/monitors", (req, res) => {
+  const page = StatusPage.findBySlug(req.params.slug);
+  if (!page || !page.published) {
+    return res.status(404).json({ error: "Status page not found" });
+  }
+
+  const pageMonitors = StatusPage.getMonitors(page.id);
+
+  const monitors = pageMonitors.map((pm) => {
+    const latest = MonitorCheck.getLatestByMonitorId(pm.monitor_id);
+    const uptime90 = MonitorCheck.getUptimePercentage(pm.monitor_id, daysAgo(90));
+
+    return {
+      id: pm.monitor_id,
+      name: pm.display_name || pm.monitor_name,
+      type: pm.monitor_type,
+      sort_order: pm.sort_order,
+      current_status: latest?.status || "unknown",
+      last_check: latest?.created_at || null,
+      response_time_ms: page.show_values ? (latest?.response_time_ms || 0) : undefined,
+      uptime_90d: uptime90,
+    };
+  });
+
+  res.json({ monitors });
+});
+
+// GET /api/public/status/:slug/messages - Public messages for a status page
+router.get("/status/:slug/messages", (req, res) => {
+  const page = StatusPage.findBySlug(req.params.slug);
+  if (!page || !page.published) {
+    return res.status(404).json({ error: "Status page not found" });
+  }
+
+  const messages = StatusPage.getMessages(page.id, { published: true, limit: 50 });
+
+  res.json({
+    messages: messages.map((msg) => ({
+      id: msg.id,
+      title: msg.title,
+      body: msg.body,
+      type: msg.type,
+      pinned: msg.pinned,
+      created_at: msg.created_at,
+    })),
+  });
 });
 
 // GET /api/public/status/:slug/incidents - Public incident list

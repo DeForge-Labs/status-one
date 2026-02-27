@@ -6,13 +6,14 @@ import { useAuth } from '@/contexts/auth';
 import Link from 'next/link';
 import Input from '@/components/ui/input';
 import Button from '@/components/ui/button';
-import { Activity } from 'lucide-react';
+import { Activity, Eye, EyeOff } from 'lucide-react';
 import { PageLoader } from '@/components/ui/spinner';
 
 export default function LoginPage() {
   const router = useRouter();
   const { user, loading: authLoading, needsSetup, login } = useAuth();
   const [form, setForm] = useState({ email: '', password: '' });
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -64,11 +65,16 @@ export default function LoginPage() {
           />
           <Input
             label="Password"
-            type="password"
+            type={showPassword ? 'text' : 'password'}
             placeholder="Enter your password"
             value={form.password}
             onChange={(e) => setForm({ ...form, password: e.target.value })}
             required
+            suffix={
+              <button type="button" onClick={() => setShowPassword(v => !v)} className="text-[var(--color-text-tertiary)] hover:text-[var(--color-text)] transition-colors cursor-pointer">
+                {showPassword ? <EyeOff size={15} /> : <Eye size={15} />}
+              </button>
+            }
           />
           <Button type="submit" className="w-full" disabled={loading}>
             {loading ? 'Signing in...' : 'Sign In'}

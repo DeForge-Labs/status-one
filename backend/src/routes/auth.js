@@ -100,6 +100,30 @@ router.put("/me", authMiddleware, async (req, res) => {
   res.json({ user });
 });
 
+// POST /api/auth/change-password - Dedicated change password endpoint
+router.post("/change-password", authMiddleware, async (req, res) => {
+  const { current_password, new_password } = req.body;
+
+  if (!current_password || !new_password) {
+    return res.status(400).json({ error: "Current password and new password are required" });
+  }
+
+  if (new_password.length < 8) {
+    return res.status(400).json({ error: "New password must be at least 8 characters" });
+  }
+
+  const fullUser = User.findByEmail(req.user.email);
+  const valid = await verifyPassword(current_password, fullUser.password_hash);
+  if (!valid) {
+    return res.status(400).json({ error: "Current password is incorrect" });
+  }
+
+  const password_hash = await hashPassword(new_password);
+  User.update(req.user.id, { password_hash });
+
+  res.json({ message: "Password changed successfully" });
+});
+
 // POST /api/auth/forgot-password
 router.post("/forgot-password", async (req, res) => {
   const { email } = req.body;
