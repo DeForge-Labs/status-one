@@ -1,0 +1,31 @@
+{
+  "name": "status-one-backend",
+  "version": "1.0.0",
+  "description": "Status one uptime monitoring backend",
+  "main": "index.js",
+  "scripts": {
+    "start": "bun run index.js",
+    "dev": "bun --watch index.js"
+  },
+  "dependencies": {
+    "express": "^4.21.2",
+    "cors": "^2.8.5",
+    "bcryptjs": "^2.4.3",
+    "jsonwebtoken": "^9.0.2",
+    "nodemailer": "^6.9.16",
+    "node-cron": "^3.0.3",
+    "uuid": "^11.1.0",
+    "ping": "^0.4.4"
+  },
+  "devDependencies": {},
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/DeForge-Labs/status-one.git"
+  },
+  "author": "DeForge-Labs",
+  "license": "GPL-3.0-or-later",
+  "bugs": {
+    "url": "https://github.com/DeForge-Labs/status-one/issues"
+  },
+  "homepage": "https://github.com/DeForge-Labs/status-one#readme"
+}
