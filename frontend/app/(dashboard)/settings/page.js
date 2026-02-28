@@ -120,7 +120,7 @@ export default function SettingsPage() {
             {Object.entries(systemInfo).map(([key, value]) => (
               <div key={key}>
                 <span className="text-[var(--color-text-tertiary)]">{key.replace(/_/g, ' ')}: </span>
-                <span className="text-[var(--color-text)]">{typeof value === 'object' ? JSON.stringify(value) : String(value)}</span>
+                <span className="text-[var(--color-text)] break-words">{typeof value === 'object' ? JSON.stringify(value) : String(value)}</span>
               </div>
             ))}
           </div>

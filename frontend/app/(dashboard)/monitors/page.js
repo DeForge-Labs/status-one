@@ -10,7 +10,7 @@ import Button from '@/components/ui/button';
 import { PageLoader } from '@/components/ui/spinner';
 import EmptyState from '@/components/ui/empty-state';
 import ConfirmDialog from '@/components/confirm-dialog';
-import { Plus, Monitor, Search, Pause, Play, Trash2, Edit, ExternalLink } from 'lucide-react';
+import { Plus, Monitor, Search, Pause, Play, Trash2, Edit, Shield, Copy, Check } from 'lucide-react';
 import { relativeTime, formatMs, uptimeColor } from '@/lib/utils';
 import clsx from 'clsx';
 
@@ -21,6 +21,15 @@ export default function MonitorsPage() {
   const [typeFilter, setTypeFilter] = useState('all');
   const [deleteId, setDeleteId] = useState(null);
   const [deleting, setDeleting] = useState(false);
+  const [badgeMonitor, setBadgeMonitor] = useState(null);
+  const [copiedKey, setCopiedKey] = useState(null);
+  const [badgeStyle, setBadgeStyle] = useState('flat');
+
+  const copySnippet = (key, text) => {
+    navigator.clipboard.writeText(text);
+    setCopiedKey(key);
+    setTimeout(() => setCopiedKey(null), 2000);
+  };
 
   if (loading && !data) return <PageLoader />;
 
@@ -169,6 +178,9 @@ export default function MonitorsPage() {
                     <Link href={`/monitors/${monitor.id}/edit`} className="p-1.5 rounded-lg hover:bg-[var(--color-bg-tertiary)] text-[var(--color-text-secondary)] transition-colors" title="Edit">
                       <Edit size={14} />
                     </Link>
+                    <button onClick={() => { setBadgeMonitor(monitor); setCopiedKey(null); }} className="p-1.5 rounded-lg hover:bg-[var(--color-bg-tertiary)] text-[var(--color-text-secondary)] transition-colors cursor-pointer" title="Badge embed">
+                      <Shield size={14} />
+                    </button>
                     <button onClick={() => setDeleteId(monitor.id)} className="p-1.5 rounded-lg hover:bg-red-500/10 text-[var(--color-text-secondary)] hover:text-red-500 transition-colors cursor-pointer" title="Delete">
                       <Trash2 size={14} />
                     </button>
@@ -179,6 +191,81 @@ export default function MonitorsPage() {
           ))}
         </div>
       )}
+
+      {/* Badge embed modal */}
+      {badgeMonitor && (() => {
+        const apiBase = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000/api';
+        const badgeUrl = `${apiBase}/public/monitors/${badgeMonitor.id}/badge?style=${badgeStyle}`;
+        const snippets = [
+          {
+            key: 'url',
+            label: 'Badge URL',
+            value: badgeUrl,
+          },
+          {
+            key: 'markdown',
+            label: 'Markdown',
+            value: `![uptime](${badgeUrl})`,
+          },
+          {
+            key: 'html',
+            label: 'HTML',
+            value: `<img src="${badgeUrl}" alt="uptime" />`,
+          },
+        ];
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50" onClick={() => setBadgeMonitor(null)}>
+            <div className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl shadow-xl w-full max-w-lg p-6 space-y-4" onClick={e => e.stopPropagation()}>
+              <div className="flex items-center justify-between">
+                <div>
+                  <h2 className="text-base font-semibold text-[var(--color-text)]">Badge — {badgeMonitor.name}</h2>
+                  <p className="text-xs text-[var(--color-text-secondary)] mt-0.5">Embed the uptime badge in your README or website</p>
+                </div>
+                <button onClick={() => setBadgeMonitor(null)} className="text-[var(--color-text-tertiary)] hover:text-[var(--color-text)] text-lg leading-none cursor-pointer">✕</button>
+              </div>
+
+              {/* Style + preview row */}
+              <div className="flex items-center gap-3">
+                <select
+                  value={badgeStyle}
+                  onChange={e => { setBadgeStyle(e.target.value); setCopiedKey(null); }}
+                  className="px-2.5 py-1.5 text-xs rounded-lg border border-[var(--color-input-border)] bg-[var(--color-input)] text-[var(--color-text)] focus:outline-none focus:ring-2 focus:ring-blue-500/40"
+                >
+                  <option value="flat">Flat</option>
+                  <option value="flat-square">Flat Square</option>
+                  <option value="plastic">Plastic</option>
+                  <option value="for-the-badge">For the Badge</option>
+                  <option value="social">Social</option>
+                </select>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img key={badgeUrl} src={badgeUrl} alt="uptime badge" className="h-5" />
+              </div>
+
+              {snippets.map(({ key, label, value }) => (
+                <div key={key}>
+                  <p className="text-xs font-medium text-[var(--color-text-secondary)] mb-1">{label}</p>
+                  <div className="flex items-center gap-2">
+                    <code className="flex-1 text-xs bg-[var(--color-bg)] border border-[var(--color-border)] rounded-lg px-3 py-2 text-[var(--color-text)] truncate font-mono">
+                      {value}
+                    </code>
+                    <button
+                      onClick={() => copySnippet(key, value)}
+                      className="flex-shrink-0 p-2 rounded-lg border border-[var(--color-border)] hover:bg-[var(--color-bg-tertiary)] text-[var(--color-text-secondary)] transition-colors cursor-pointer"
+                      title="Copy"
+                    >
+                      {copiedKey === key ? <Check size={14} className="text-green-500" /> : <Copy size={14} />}
+                    </button>
+                  </div>
+                </div>
+              ))}
+
+              <p className="text-[11px] text-[var(--color-text-tertiary)] pt-1">
+                The badge data is fetched from the public API. Updates every 5 minutes.
+              </p>
+            </div>
+          </div>
+        );
+      })()}
 
       <ConfirmDialog
         open={!!deleteId}

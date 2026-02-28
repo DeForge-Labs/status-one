@@ -59,13 +59,13 @@ export default function Sidebar() {
         <div className="flex items-center justify-between h-16 px-4 border-b border-[var(--color-border)]">
           {!collapsed && (
             <Link href="/dashboard" className="flex items-center gap-2">
-              <Activity size={22} className="text-blue-600 flex-shrink-0" />
+              <img src="/logo.png" alt="Logo" className="h-6 w-6" />
               <span className="text-base font-bold text-[var(--color-text)]">Status One</span>
             </Link>
           )}
           {collapsed && (
             <Link href="/dashboard" className="mx-auto">
-              <Activity size={22} className="text-blue-600" />
+              <img src="/logo.png" alt="Logo" className="h-6 w-6" />
             </Link>
           )}
           <button

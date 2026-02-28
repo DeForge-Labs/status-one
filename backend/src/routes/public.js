@@ -219,4 +219,163 @@ router.get("/status/:slug/incidents", (req, res) => {
   res.json({ incidents: enriched });
 });
 
+// Helpers for badge SVG generation
+function badgeColor(uptime) {
+  if (uptime >= 99.9) return "#4c1";
+  if (uptime >= 99)   return "#97ca00";
+  if (uptime >= 95)   return "#dfb317";
+  if (uptime >= 90)   return "#fe7d37";
+  return "#e05d44";
+}
+
+function buildBadgeSvg(label, value, color, style) {
+  const FONT = "DejaVu Sans,Verdana,Geneva,sans-serif";
+
+  if (style === "for-the-badge") {
+    const L = label.toUpperCase();
+    const V = value.toUpperCase();
+    // ~7.5px per uppercase char + 20px padding each side
+    const lw = Math.max(L.length * 7.5 + 40, 50);
+    const vw = Math.max(V.length * 7.5 + 40, 40);
+    const tw = lw + vw;
+    const lx = Math.round(lw / 2);
+    const vx = lw + Math.round(vw / 2);
+    return `<svg xmlns="http://www.w3.org/2000/svg" width="${tw}" height="28">
+  <g shape-rendering="crispEdges">
+    <rect width="${lw}" height="28" fill="#555"/>
+    <rect x="${lw}" width="${vw}" height="28" fill="${color}"/>
+  </g>
+  <g fill="#fff" text-anchor="middle" font-family="${FONT}" font-size="10" font-weight="bold" letter-spacing="1">
+    <text x="${lx}" y="19" fill="#010101" fill-opacity=".3">${L}</text>
+    <text x="${lx}" y="18">${L}</text>
+    <text x="${vx}" y="19" fill="#010101" fill-opacity=".3">${V}</text>
+    <text x="${vx}" y="18">${V}</text>
+  </g>
+</svg>`;
+  }
+
+  if (style === "plastic") {
+    // height=18, rx=4, stronger top-to-bottom gradient
+    const lw = 52;
+    const vw = Math.max(value.length * 7 + 20, 30);
+    const tw = lw + vw;
+    const lx = Math.round(lw / 2);
+    const vx = lw + Math.round(vw / 2);
+    return `<svg xmlns="http://www.w3.org/2000/svg" width="${tw}" height="18">
+  <linearGradient id="s" x2="0" y2="100%">
+    <stop offset="0"  stop-color="#fff" stop-opacity=".7"/>
+    <stop offset=".1" stop-color="#aaa" stop-opacity=".1"/>
+    <stop offset=".9" stop-opacity=".3"/>
+    <stop offset="1"  stop-opacity=".5"/>
+  </linearGradient>
+  <clipPath id="r">
+    <rect width="${tw}" height="18" rx="4" fill="#fff"/>
+  </clipPath>
+  <g clip-path="url(#r)">
+    <rect width="${lw}" height="18" fill="#555"/>
+    <rect x="${lw}" width="${vw}" height="18" fill="${color}"/>
+    <rect width="${tw}" height="18" fill="url(#s)"/>
+  </g>
+  <g fill="#fff" text-anchor="middle" font-family="${FONT}" font-size="11">
+    <text x="${lx}" y="14" fill="#010101" fill-opacity=".3">${label}</text>
+    <text x="${lx}" y="13">${label}</text>
+    <text x="${vx}" y="14" fill="#010101" fill-opacity=".3">${value}</text>
+    <text x="${vx}" y="13">${value}</text>
+  </g>
+</svg>`;
+  }
+
+  if (style === "social") {
+    // Rounded pill (rx=10), label in grey, value in blue tint, outlined value box
+    const lw = Math.max(label.length * 6.5 + 16, 40);
+    const vw = Math.max(value.length * 6.5 + 16, 30);
+    const tw = lw + vw + 6; // small gap between panels
+    const lx = Math.round(lw / 2);
+    const vx = lw + 6 + Math.round(vw / 2);
+    const valueColor = color === "#9f9f9f" ? "#9f9f9f" : "#4078c8";
+    return `<svg xmlns="http://www.w3.org/2000/svg" width="${tw}" height="20">
+  <linearGradient id="a" x2="0" y2="100%">
+    <stop offset="0" stop-color="#fcfcfc" stop-opacity="0"/>
+    <stop offset="1" stop-opacity=".15"/>
+  </linearGradient>
+  <rect x=".5" y=".5" width="${lw - 1}" height="19" rx="2" fill="#fafafa" stroke="#d5d5d5"/>
+  <rect x="${lw + 5}.5" y=".5" width="${vw - 1}" height="19" rx="2" fill="${valueColor}" stroke="${valueColor}cc"/>
+  <rect x="${lw + 5}.5" y=".5" width="${vw - 1}" height="19" rx="2" fill="url(#a)"/>
+  <g fill="#333" text-anchor="middle" font-family="DejaVu Sans,Helvetica,Arial,sans-serif" font-size="11">
+    <text x="${lx}" y="15">${label}</text>
+  </g>
+  <g fill="#fff" text-anchor="middle" font-family="DejaVu Sans,Helvetica,Arial,sans-serif" font-size="11">
+    <text x="${vx}" y="15" fill="#010101" fill-opacity=".3">${value}</text>
+    <text x="${vx}" y="14">${value}</text>
+  </g>
+</svg>`;
+  }
+
+  // flat (default) and flat-square
+  const rx = style === "flat-square" ? 0 : 3;
+  const lw = 52;
+  const vw = Math.max(value.length * 7 + 20, 30);
+  const tw = lw + vw;
+  const lx = Math.round(lw / 2);
+  const vx = lw + Math.round(vw / 2);
+  const clipRect = rx > 0
+    ? `<rect width="${tw}" height="20" rx="${rx}" fill="#fff"/>`
+    : `<rect width="${tw}" height="20" fill="#fff"/>`;
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${tw}" height="20">
+  <linearGradient id="s" x2="0" y2="100%">
+    <stop offset="0" stop-color="#bbb" stop-opacity=".1"/>
+    <stop offset="1" stop-opacity=".1"/>
+  </linearGradient>
+  <clipPath id="r">${clipRect}</clipPath>
+  <g clip-path="url(#r)">
+    <rect width="${lw}" height="20" fill="#555"/>
+    <rect x="${lw}" width="${vw}" height="20" fill="${color}"/>
+    <rect width="${tw}" height="20" fill="url(#s)"/>
+  </g>
+  <g fill="#fff" text-anchor="middle" font-family="${FONT}" font-size="11">
+    <text x="${lx}" y="15" fill="#010101" fill-opacity=".3">${label}</text>
+    <text x="${lx}" y="14">${label}</text>
+    <text x="${vx}" y="15" fill="#010101" fill-opacity=".3">${value}</text>
+    <text x="${vx}" y="14">${value}</text>
+  </g>
+</svg>`;
+}
+
+const VALID_STYLES = new Set(["flat", "flat-square", "plastic", "for-the-badge", "social"]);
+
+// GET /api/public/monitors/:id/badge - Self-hosted uptime badge (SVG)
+// ?style=flat|flat-square|plastic|for-the-badge|social  (default: flat)
+router.get("/monitors/:id/badge", (req, res) => {
+  const style = VALID_STYLES.has(req.query.style) ? req.query.style : "flat";
+  const monitor = Monitor.findById(req.params.id);
+
+  let label = "uptime";
+  let value, color;
+
+  if (!monitor) {
+    value = "not found";
+    color = "#9f9f9f";
+  } else if (!monitor.active) {
+    value = "paused";
+    color = "#9f9f9f";
+  } else {
+    const uptime = MonitorCheck.getUptimePercentage(monitor.id, daysAgo(1));
+    const latest = MonitorCheck.getLatestByMonitorId(monitor.id);
+    if (!latest) {
+      value = "no data";
+      color = "#9f9f9f";
+    } else {
+      value = uptime.toFixed(2).replace(/\.?0+$/, "") + "%";
+      color = badgeColor(uptime);
+    }
+  }
+
+  res.set({
+    "Content-Type": "image/svg+xml",
+    "Cache-Control": "public, max-age=300, stale-while-revalidate=600",
+    "Access-Control-Allow-Origin": "*",
+  });
+  res.send(buildBadgeSvg(label, value, color, style));
+});
+
 module.exports = router;
