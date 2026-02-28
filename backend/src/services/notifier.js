@@ -2,19 +2,26 @@ const Monitor = require("../models/monitor");
 const telegram = require("./telegram");
 const email = require("./email");
 const webhook = require("./webhook");
+const discord = require("./discord");
 const logger = require("../utils/logger");
 
 async function sendToChannel(channel, payload) {
   try {
     switch (channel.type) {
       case "telegram":
-        await telegram.sendMessage(channel.config, payload);
+        await telegram.sendMessage(channel.config, payload, channel.id);
         break;
       case "email":
         await email.sendNotification(channel.config, payload);
         break;
       case "webhook":
         await webhook.sendWebhook(channel.config, payload);
+        break;
+      case "slack":
+        await webhook.sendWebhook({ url: channel.config.webhook_url }, payload);
+        break;
+      case "discord":
+        await discord.sendNotification(channel.config, payload);
         break;
       default:
         logger.warn(`Unknown notification channel type: ${channel.type}`);

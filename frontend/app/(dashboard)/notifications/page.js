@@ -26,7 +26,7 @@ const configFields = {
   discord: [{ key: 'webhook_url', label: 'Webhook URL', placeholder: 'https://discord.com/api/webhooks/...' }],
   telegram: [
     { key: 'bot_token', label: 'Bot Token', placeholder: '123456:ABC-DEF...' },
-    { key: 'chat_id', label: 'Chat ID', placeholder: '-1001234567890' },
+    { key: 'webhook_secret', label: 'Webhook Secret', placeholder: 'webhook-secret' },
   ],
   webhook: [
     { key: 'url', label: 'Webhook URL', placeholder: 'https://example.com/webhook' },

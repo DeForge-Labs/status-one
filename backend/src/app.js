@@ -20,6 +20,7 @@ const settingsRoutes = require("./routes/settings");
 const apiKeyRoutes = require("./routes/apiKeys");
 const systemRoutes = require("./routes/system");
 const publicRoutes = require("./routes/public");
+const telegramRoutes = require("./routes/telegram");
 
 function createApp() {
   const app = express();
@@ -59,6 +60,9 @@ function createApp() {
 
   // Public routes (no auth)
   app.use("/api/public", publicRoutes);
+
+  // Telegram bot webhook (public, verified internally per channel)
+  app.use("/api/telegram", telegramRoutes);
 
   // Setup (first admin creation)
   app.use("/api/setup", setupRoutes);

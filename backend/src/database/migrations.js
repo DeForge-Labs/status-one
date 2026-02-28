@@ -23,13 +23,27 @@ function runMigrations() {
     db.run("INSERT INTO schema_version (version) VALUES (1)");
   }
 
-  // if (currentVersion < 2) {
-  //   logger.info("Running migration v2: add custom_domain to status_pages");
-  //   migrateV2(db);
-  //   db.run("INSERT INTO schema_version (version) VALUES (2)");
-  // }
+  if (currentVersion < 2) {
+    logger.info("Running migration v2: telegram subscribers");
+    migrateV2(db);
+    db.run("INSERT INTO schema_version (version) VALUES (2)");
+  }
 
   logger.info(`Database schema at version ${SCHEMA_VERSION}`);
+}
+
+function migrateV2(db) {
+  db.run(`
+    CREATE TABLE IF NOT EXISTS telegram_subscribers (
+      id TEXT PRIMARY KEY,
+      notification_channel_id TEXT NOT NULL,
+      chat_id TEXT NOT NULL,
+      username TEXT DEFAULT '',
+      created_at TEXT DEFAULT (datetime('now')),
+      FOREIGN KEY (notification_channel_id) REFERENCES notification_channels(id) ON DELETE CASCADE,
+      UNIQUE(notification_channel_id, chat_id)
+    )
+  `);
 }
 
 function migrateV1(db) {
@@ -335,13 +349,6 @@ function migrateV1(db) {
   );
   db.run(
     "CREATE INDEX IF NOT EXISTS idx_monitor_checks_status ON monitor_checks(monitor_id, status)"
-  );
-}
-
-function migrateV2(db) {
-  db.run(`ALTER TABLE status_pages ADD COLUMN custom_domain TEXT DEFAULT ''`);
-  db.run(
-    "CREATE UNIQUE INDEX IF NOT EXISTS idx_status_pages_custom_domain ON status_pages(custom_domain) WHERE custom_domain != ''"
   );
 }
 
