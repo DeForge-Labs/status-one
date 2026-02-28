@@ -165,6 +165,7 @@ NEXT_PUBLIC_API_URL=http://localhost:3000/api
 ### 3. Start the application
 
 ```bash
+docker compose build
 docker compose up -d
 ```
 

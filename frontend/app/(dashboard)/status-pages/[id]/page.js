@@ -50,6 +50,7 @@ export default function StatusPageEditorPage({ params }) {
       setForm({
         name: sp.name || '',
         slug: sp.slug || '',
+        custom_domain: sp.custom_domain || '',
         description: sp.description || '',
         logo_url: sp.logo_url || '',
         theme: sp.theme || 'light',
@@ -173,6 +174,17 @@ export default function StatusPageEditorPage({ params }) {
           <div className="space-y-4">
             <Input label="Name *" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} required />
             <Input label="Slug *" value={form.slug} onChange={e => setForm({ ...form, slug: e.target.value })} required />
+            <div>
+              <Input
+                label="Custom Domain"
+                placeholder="status.yourcompany.com"
+                value={form.custom_domain}
+                onChange={e => setForm({ ...form, custom_domain: e.target.value })}
+              />
+              <p className="mt-1 text-xs text-[var(--color-text-tertiary)]">
+                Point your domain&#39;s DNS (A/CNAME) to this server, then enter the bare hostname here (no <code>https://</code>).
+              </p>
+            </div>
             <Textarea label="Description" value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} />
             <Input label="Logo URL" placeholder="https://example.com/logo.png" value={form.logo_url} onChange={e => setForm({ ...form, logo_url: e.target.value })} />
             <Select label="Theme" value={form.theme} onChange={e => setForm({ ...form, theme: e.target.value })}>

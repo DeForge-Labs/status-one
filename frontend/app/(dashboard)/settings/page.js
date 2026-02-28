@@ -53,6 +53,7 @@ export default function SettingsPage() {
     try {
       await factoryReset();
       localStorage.removeItem('status_one_token');
+      localStorage.removeItem('status_one_app_url_initialized');
       window.location.href = '/setup';
     } catch {}
     setResetting(false);
@@ -106,6 +107,7 @@ export default function SettingsPage() {
         <div className="space-y-4">
           <Input label="Site Title" value={settings.site_title || ''} onChange={e => setSettings({ ...settings, site_title: e.target.value })} />
           <Input label="Site URL" placeholder="https://status.example.com" value={settings.site_url || ''} onChange={e => setSettings({ ...settings, site_url: e.target.value })} />
+          <Input label="Server URL" placeholder="https://statusapi.example.com" value={settings.app_url || ''} onChange={e => setSettings({ ...settings, app_url: e.target.value })} />
           <div className="flex justify-end">
             <Button onClick={handleSave} disabled={saving}><Save size={14} /> {saving ? 'Saving...' : 'Save Settings'}</Button>
           </div>
