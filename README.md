@@ -25,6 +25,9 @@ Status One is a lightweight, self-hosted uptime monitoring platform built by [De
 
 ## Screenshots
 
+<img width="1920" height="919" alt="image" src="https://github.com/user-attachments/assets/59c9d671-7b5a-42e6-910e-d77aac63b877" />
+<img width="1920" height="919" alt="image" src="https://github.com/user-attachments/assets/af06f984-6f5f-4355-80ae-150c06b185d9" />
+<img width="1920" height="919" alt="image" src="https://github.com/user-attachments/assets/4e0f9816-4740-4eb4-ab17-7a122a376d28" />
 
 ---
 
