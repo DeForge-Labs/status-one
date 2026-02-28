@@ -208,7 +208,7 @@ export default function PublicStatusPage({ params }) {
       <div className="mt-12 pt-6 border-t border-[var(--color-border)] flex items-center justify-center gap-6 text-xs text-[var(--color-text-tertiary)]">
         <Link href={`/status/${slug}/history`} className="hover:text-[var(--color-text-secondary)] transition-colors">Uptime History</Link>
         <Link href={`/status/${slug}/incidents`} className="hover:text-[var(--color-text-secondary)] transition-colors">Incident History</Link>
-        <span>Powered by Status One</span>
+        <Link href={`https://github.com/DeForge-Labs/status-one`} className="hover:text-[var(--color-text-secondary)] transition-colors">Powered by Status One</Link>
       </div>
     </div>
   );
