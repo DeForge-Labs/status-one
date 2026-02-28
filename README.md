@@ -238,6 +238,7 @@ The frontend starts on `http://localhost:3001` by default.
 | Variable | Default | Description |
 |---|---|---|
 | `NEXT_PUBLIC_API_URL` | `http://localhost:3000/api` | Backend API URL (used by browser) |
+| `MAIN_DOMAINS` | *(empty)* | Domains not to be used for status pages (basically dashboard url) |
 
 ---
 
