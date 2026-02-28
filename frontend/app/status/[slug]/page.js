@@ -7,6 +7,7 @@ import UptimeBar from '@/components/uptime-bar';
 import { overallStatusInfo, relativeTime, formatMs, uptimeColor } from '@/lib/utils';
 import { CheckCircle2, XCircle, AlertTriangle, MinusCircle, Clock, ExternalLink, MessageSquare } from 'lucide-react';
 import clsx from 'clsx';
+import ThemeSelector from '@/components/theme-selector';
 
 const statusIcons = {
   up: CheckCircle2,
@@ -90,8 +91,11 @@ export default function PublicStatusPage({ params }) {
           <img src={page.logo_url} alt={page.title} className="h-10 mx-auto mb-4 object-contain" />
         )}
         <h1 className="text-2xl font-bold text-[var(--color-text)]">{page?.name || 'Status'}</h1>
+        {page?.header_text && (
+          <p className="text-sm text-[var(--color-text-secondary)] mt-2">{page.header_text}</p>
+        )}
         {page?.description && (
-          <p className="text-sm text-[var(--color-text-secondary)] mt-2">{page.description}</p>
+          <p className="text-xs text-[var(--color-text-tertiary)] mt-1">{page.description}</p>
         )}
       </div>
 
@@ -133,7 +137,7 @@ export default function PublicStatusPage({ params }) {
           return (
             <div key={monitor.id} className="rounded-xl bg-[var(--color-surface)] border border-[var(--color-border)] p-4 sm:p-5">
               <div className="flex items-center justify-between mb-3">
-                <div className="flex items-center gap-2 min-w-0">
+                <div className="relative flex items-center gap-2 min-w-0 group">
                   <Icon
                     size={16}
                     className={clsx(
@@ -144,6 +148,11 @@ export default function PublicStatusPage({ params }) {
                     )}
                   />
                   <span className="text-sm font-medium text-[var(--color-text)] truncate">{monitor.name}</span>
+                  {monitor.description && (
+                    <div className="absolute left-0 top-full mt-1.5 z-20 hidden group-hover:block bg-[var(--color-surface)] border border-[var(--color-border)] text-xs text-[var(--color-text-secondary)] rounded-lg px-3 py-2 shadow-xl max-w-xs w-max whitespace-normal pointer-events-none">
+                      {monitor.description}
+                    </div>
+                  )}
                 </div>
                 <div className="flex items-center gap-3 text-xs text-[var(--color-text-secondary)] flex-shrink-0">
                   {uptime != null && (
@@ -204,11 +213,21 @@ export default function PublicStatusPage({ params }) {
         </div>
       )}
 
+      {/* Footer Text */}
+      {page?.footer_text && (
+        <p className="mt-10 text-center text-xs text-[var(--color-text-tertiary)]">{page.footer_text}</p>
+      )}
+
       {/* Footer Links */}
-      <div className="mt-12 pt-6 border-t border-[var(--color-border)] flex items-center justify-center gap-6 text-xs text-[var(--color-text-tertiary)]">
+      <div className="mt-6 pt-6 border-t border-[var(--color-border)] flex items-center justify-center gap-6 text-xs text-[var(--color-text-tertiary)]">
         <Link href={`/status/${slug}/history`} className="hover:text-[var(--color-text-secondary)] transition-colors">Uptime History</Link>
         <Link href={`/status/${slug}/incidents`} className="hover:text-[var(--color-text-secondary)] transition-colors">Incident History</Link>
         <Link href={`https://github.com/DeForge-Labs/status-one`} className="hover:text-[var(--color-text-secondary)] transition-colors">Powered by Status One</Link>
+      </div>
+
+      {/* Theme Switcher */}
+      <div className="flex justify-end mb-6">
+        <ThemeSelector compact />
       </div>
     </div>
   );

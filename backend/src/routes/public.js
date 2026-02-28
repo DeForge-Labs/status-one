@@ -40,6 +40,7 @@ router.get("/status/:slug", (req, res) => {
     return {
       id: pm.monitor_id,
       name: pm.display_name || pm.monitor_name,
+      description: monitor?.description || "",
       type: pm.monitor_type,
       sort_order: pm.sort_order,
       current_status: latest?.status || "unknown",
