@@ -2,14 +2,14 @@ const { getDb } = require("../database/connection");
 const { generateId, nowISO } = require("../utils/helpers");
 
 const NotificationChannel = {
-  create({ name, type, config, created_by }) {
+  create({ name, type, config, active, created_by }) {
     const db = getDb();
     const id = generateId();
     const now = nowISO();
     db.prepare(`
       INSERT INTO notification_channels (id, name, type, config, active, created_by, created_at, updated_at)
-      VALUES (?, ?, ?, ?, 1, ?, ?, ?)
-    `).run(id, name, type, JSON.stringify(config || {}), created_by || null, now, now);
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(id, name, type, JSON.stringify(config || {}), active !== undefined ? (active ? 1 : 0) : 1, created_by || null, now, now);
     return this.findById(id);
   },
 

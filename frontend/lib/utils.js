@@ -28,13 +28,13 @@ export function formatMs(ms) {
 
 export function uptimeColor(pct) {
   if (pct >= 99) return 'text-green-500';
-  if (pct >= 95) return 'text-yellow-500';
+  if (pct >= 80) return 'text-yellow-500';
   return 'text-red-500';
 }
 
 export function uptimeBgColor(pct) {
   if (pct >= 99.5) return 'bg-green-500';
-  if (pct >= 95) return 'bg-yellow-500';
+  if (pct >= 80) return 'bg-yellow-500';
   if (pct > 0) return 'bg-red-500';
   return 'bg-zinc-300 dark:bg-zinc-700';
 }

@@ -6,7 +6,7 @@ import { uptimeBgColor } from '@/lib/utils';
 export default function UptimeBar({ days = [], checks, compact = false, monitorId, className }) {
   // Support both `days` array and `checks` array formats
   const data = days?.length > 0 ? days : checks || [];
-  const barHeight = compact ? 'h-6' : 'h-8';
+  const barHeight = compact ? 'h-10' : 'h-12';
   const numBars = compact ? 45 : 90;
 
   const displayData = data.slice(compact ? -45 : -90);

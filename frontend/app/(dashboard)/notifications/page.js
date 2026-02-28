@@ -21,7 +21,7 @@ const channelTypes = [
 ];
 
 const configFields = {
-  email: [{ key: 'email', label: 'Email Address', type: 'email', placeholder: 'alerts@example.com' }],
+  email: [{ key: 'recipients', label: 'Email Address', type: 'email', placeholder: 'alerts@example.com' }],
   slack: [{ key: 'webhook_url', label: 'Webhook URL', placeholder: 'https://hooks.slack.com/services/...' }],
   discord: [{ key: 'webhook_url', label: 'Webhook URL', placeholder: 'https://discord.com/api/webhooks/...' }],
   telegram: [

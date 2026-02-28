@@ -53,13 +53,11 @@ router.post("/", authMiddleware, (req, res) => {
   const channel = NotificationChannel.create({
     name: sanitizeString(name, 200),
     type,
-    config: JSON.stringify(config),
-    enabled: enabled !== false,
+    config,
+    active: enabled !== false ? 1 : 0,
     created_by: req.user.id,
   });
 
-  // Parse config back for response
-  channel.config = JSON.parse(channel.config);
   res.status(201).json({ channel });
 });
 
@@ -73,7 +71,7 @@ router.put("/:id", authMiddleware, (req, res) => {
   const updates = {};
   if (req.body.name) updates.name = sanitizeString(req.body.name, 200);
   if (req.body.config) updates.config = JSON.stringify(req.body.config);
-  if (req.body.enabled !== undefined) updates.enabled = req.body.enabled ? 1 : 0;
+  if (req.body.enabled !== undefined) updates.active = req.body.enabled ? 1 : 0;
 
   const updated = NotificationChannel.update(req.params.id, updates);
   if (updated.config && typeof updated.config === "string") {
@@ -114,10 +112,10 @@ router.post("/:id/test", authMiddleware, async (req, res) => {
         await telegram.send(config.bot_token, config.chat_id, "🔔 *Test Notification*\nThis is a test from Status One. Your notification channel is working!");
         break;
       case "email":
-        await email.send({
-          to: config.recipients,
-          subject: "Test Notification - Status One",
-          html: "<h2>Test Notification</h2><p>This is a test from Status One. Your email notification channel is working!</p>",
+        await email.sendNotification(config, {
+          type: "test",
+          message: "This is a test from Status One. Your email notification channel is working!",
+          timestamp: new Date().toISOString(),
         });
         break;
       case "webhook":
