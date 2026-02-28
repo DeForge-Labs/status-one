@@ -3,7 +3,6 @@
 import { useState, useEffect, use } from 'react';
 import Link from 'next/link';
 import { getPublicStatusPage, getPublicStatusHistory } from '@/lib/api';
-import Spinner from '@/components/ui/spinner';
 import { uptimeColor } from '@/lib/utils';
 import { ArrowLeft } from 'lucide-react';
 
@@ -29,7 +28,18 @@ export default function HistoryPage({ params }) {
   }, [slug]);
 
   if (loading) {
-    return <div className="flex items-center justify-center min-h-screen"><Spinner size="lg" /></div>;
+    return (
+      <div className="max-w-3xl mx-auto px-4 py-8 sm:py-12 animate-pulse">
+        <div className="h-4 bg-[var(--color-border)] rounded w-24 mb-4" />
+        <div className="h-8 bg-[var(--color-border)] rounded w-48 mb-2" />
+        <div className="h-4 bg-[var(--color-border)] rounded w-32 mb-8" />
+        <div className="space-y-6">
+          {[...Array(4)].map((_, i) => (
+            <div key={i} className="h-20 bg-[var(--color-border)] rounded-lg" />
+          ))}
+        </div>
+      </div>
+    );
   }
 
   return (

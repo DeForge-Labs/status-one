@@ -4,7 +4,6 @@ import { useState, useEffect, use } from 'react';
 import Link from 'next/link';
 import { getPublicStatusPage } from '@/lib/api';
 import UptimeBar from '@/components/uptime-bar';
-import Spinner from '@/components/ui/spinner';
 import { overallStatusInfo, relativeTime, formatMs, uptimeColor } from '@/lib/utils';
 import { CheckCircle2, XCircle, AlertTriangle, MinusCircle, Clock, ExternalLink, MessageSquare } from 'lucide-react';
 import clsx from 'clsx';
@@ -49,8 +48,15 @@ export default function PublicStatusPage({ params }) {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
-        <Spinner size="lg" />
+      <div className="max-w-3xl mx-auto px-4 py-8 sm:py-12 animate-pulse">
+        <div className="h-8 bg-[var(--color-border)] rounded w-48 mb-2" />
+        <div className="h-4 bg-[var(--color-border)] rounded w-72 mb-8" />
+        <div className="h-16 bg-[var(--color-border)] rounded-lg mb-8" />
+        <div className="space-y-4">
+          {[...Array(3)].map((_, i) => (
+            <div key={i} className="h-20 bg-[var(--color-border)] rounded-lg" />
+          ))}
+        </div>
       </div>
     );
   }
