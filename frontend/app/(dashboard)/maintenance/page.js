@@ -18,6 +18,14 @@ import { formatDate } from '@/lib/utils';
 
 const EMPTY_FORM = { title: '', description: '', start_time: '', end_time: '', recurring: false, recurring_interval: '', monitor_ids: [] };
 
+function toDatetimeLocal(dateStr) {
+  if (!dateStr) return '';
+  const d = new Date(dateStr.includes('T') ? dateStr : dateStr.replace(' ', 'T') + 'Z');
+  if (isNaN(d.getTime())) return '';
+  const pad = n => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
 export default function MaintenancePage() {
   const [windows, setWindows] = useState([]);
   const [monitors, setMonitors] = useState([]);
@@ -53,8 +61,8 @@ export default function MaintenancePage() {
     setForm({
       title: w.title || '',
       description: w.description || '',
-      start_time: w.start_time ? w.start_time.slice(0, 16) : '',
-      end_time: w.end_time ? w.end_time.slice(0, 16) : '',
+      start_time: toDatetimeLocal(w.start_time),
+      end_time: toDatetimeLocal(w.end_time),
       recurring: !!w.recurring,
       recurring_interval: w.recurring_interval || '',
       monitor_ids: w.monitor_ids || [],

@@ -14,7 +14,7 @@ const badgeVariants = {
   resolved: 'bg-green-500/10 text-green-600 dark:text-green-400',
   info: 'bg-blue-500/10 text-blue-600 dark:text-blue-400',
   warning: 'bg-yellow-500/10 text-yellow-600 dark:text-yellow-400',
-  maintenance: 'bg-zinc-500/10 text-zinc-600 dark:text-zinc-400',
+  maintenance: 'bg-blue-500/10 text-blue-600 dark:text-blue-400',
   default: 'bg-zinc-500/10 text-zinc-600 dark:text-zinc-400',
 };
 
@@ -33,8 +33,8 @@ export default function Badge({ variant = 'default', children, className, dot = 
           'bg-red-500': variant === 'down' || variant === 'investigating',
           'bg-yellow-500': variant === 'degraded' || variant === 'warning',
           'bg-orange-500': variant === 'identified',
-          'bg-blue-500': variant === 'monitoring' || variant === 'info',
-          'bg-zinc-400': !['up','down','degraded','resolved','investigating','identified','monitoring','warning'].includes(variant),
+        'bg-blue-500': variant === 'monitoring' || variant === 'info' || variant === 'maintenance',
+          'bg-zinc-400': !['up','down','degraded','resolved','investigating','identified','monitoring','warning','maintenance'].includes(variant),
         })} />
       )}
       {children}
@@ -43,7 +43,8 @@ export default function Badge({ variant = 'default', children, className, dot = 
 }
 
 export function StatusBadge({ status, active = true }) {
-  if (!active) return <Badge variant="paused" dot>Paused</Badge>;
+  if (!active || status === 'paused') return <Badge variant="paused" dot>Paused</Badge>;
+  if (status === 'maintenance') return <Badge variant="maintenance" dot>Maintenance</Badge>;
   const labels = { up: 'Up', down: 'Down', degraded: 'Degraded', unknown: 'Unknown' };
   return <Badge variant={status || 'unknown'} dot>{labels[status] || 'Unknown'}</Badge>;
 }

@@ -8,6 +8,7 @@ const { generatePushToken } = require("../utils/crypto");
 const { paginationMeta, daysAgo } = require("../utils/helpers");
 const monitorEngine = require("../services/monitorEngine");
 const heartbeat = require("../services/heartbeat");
+const Maintenance = require("../models/maintenance");
 
 // GET /api/monitors - List all monitors
 router.get("/", authMiddleware, (req, res) => {
@@ -18,11 +19,18 @@ router.get("/", authMiddleware, (req, res) => {
     const latest = MonitorCheck.getLatestByMonitorId(m.id);
     const tags = Monitor.getTagsForMonitor(m.id);
     const notificationIds = Monitor.getLinkedNotificationIds(m.id);
+    const is_paused = !m.active;
+    const in_maintenance = !is_paused && Maintenance.isMonitorInMaintenance(m.id);
+    let current_status = latest?.status || "unknown";
+    if (is_paused) current_status = "paused";
+    else if (in_maintenance) current_status = "maintenance";
     return {
       ...m,
-      current_status: latest?.status || "unknown",
+      current_status,
       last_check: latest?.created_at || null,
       last_response_time: latest?.response_time_ms || 0,
+      is_paused,
+      in_maintenance,
       tags,
       notification_channel_ids: notificationIds,
     };
@@ -51,13 +59,20 @@ router.get("/:id", authMiddleware, (req, res) => {
   };
 
   const avgResponseTime = MonitorCheck.getAvgResponseTime(monitor.id, daysAgo(1));
+  const is_paused = !monitor.active;
+  const in_maintenance = !is_paused && Maintenance.isMonitorInMaintenance(monitor.id);
+  let current_status = latest?.status || "unknown";
+  if (is_paused) current_status = "paused";
+  else if (in_maintenance) current_status = "maintenance";
 
   res.json({
     monitor: {
       ...monitor,
-      current_status: latest?.status || "unknown",
+      current_status,
       last_check: latest?.created_at || null,
       last_response_time: latest?.response_time_ms || 0,
+      is_paused,
+      in_maintenance,
       tags,
       notification_channel_ids: notificationIds,
       uptime,

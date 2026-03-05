@@ -1,7 +1,7 @@
 const { getDb } = require("./connection");
 const logger = require("../utils/logger");
 
-const SCHEMA_VERSION = 2;
+const SCHEMA_VERSION = 3;
 
 function runMigrations() {
   const db = getDb();
@@ -29,7 +29,29 @@ function runMigrations() {
     db.run("INSERT INTO schema_version (version) VALUES (2)");
   }
 
+  if (currentVersion < 3) {
+    logger.info("Running migration v3: maintenance monitor join table");
+    migrateV3(db);
+    db.run("INSERT INTO schema_version (version) VALUES (3)");
+  }
+
   logger.info(`Database schema at version ${SCHEMA_VERSION}`);
+}
+
+function migrateV3(db) {
+  db.run(`
+    CREATE TABLE IF NOT EXISTS maintenance_monitors (
+      maintenance_id TEXT NOT NULL PRIMARY KEY,
+      FOREIGN KEY (maintenance_id) REFERENCES maintenance_windows(id) ON DELETE CASCADE
+    )
+  `);
+
+  db.run(
+    "CREATE INDEX IF NOT EXISTS idx_maintenance_monitors_maintenance ON maintenance_monitors(maintenance_id)"
+  );
+  db.run(
+    "CREATE INDEX IF NOT EXISTS idx_maintenance_monitors_monitor ON maintenance_monitors(monitor_id)"
+  );
 }
 
 function migrateV2(db) {

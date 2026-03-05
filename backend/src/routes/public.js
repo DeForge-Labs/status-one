@@ -4,6 +4,7 @@ const StatusPage = require("../models/statusPage");
 const Monitor = require("../models/monitor");
 const MonitorCheck = require("../models/monitorCheck");
 const Incident = require("../models/incident");
+const Maintenance = require("../models/maintenance");
 const { daysAgo, dateToISO } = require("../utils/helpers");
 const { validatePagination } = require("../utils/validators");
 
@@ -30,6 +31,11 @@ router.get("/status/:slug", (req, res) => {
     const monitor = Monitor.findById(pm.monitor_id);
     const latest = MonitorCheck.getLatestByMonitorId(pm.monitor_id);
     const uptime90 = MonitorCheck.getUptimePercentage(pm.monitor_id, daysAgo(90));
+    const is_paused = monitor ? !monitor.active : false;
+    const in_maintenance = !is_paused && Maintenance.isMonitorInMaintenance(pm.monitor_id);
+    let current_status = latest?.status || "unknown";
+    if (is_paused) current_status = "paused";
+    else if (in_maintenance) current_status = "maintenance";
 
     const dailyStats = MonitorCheck.getDailyStatsRange(
       pm.monitor_id,
@@ -43,7 +49,9 @@ router.get("/status/:slug", (req, res) => {
       description: monitor?.description || "",
       type: pm.monitor_type,
       sort_order: pm.sort_order,
-      current_status: latest?.status || "unknown",
+      current_status,
+      is_paused,
+      in_maintenance,
       last_check: latest?.created_at || null,
       response_time_ms: page.show_values ? (latest?.response_time_ms || 0) : undefined,
       uptime_90d: uptime90,
@@ -59,17 +67,36 @@ router.get("/status/:slug", (req, res) => {
     };
   });
 
-  // Get active incidents for this page's monitors
+  // Get active maintenance windows for this page's monitors
   const monitorIds = pageMonitors.map((pm) => pm.monitor_id);
+  const activeMaintenanceWindows = Maintenance.findOngoingForMonitors(monitorIds).map((w) => ({
+    id: w.id,
+    title: w.title,
+    description: w.description,
+    start_time: w.start_time,
+    end_time: w.end_time,
+    // Array of monitor IDs covered by this window (empty = global / affects all)
+    monitor_ids: w.monitor_ids,
+    // Resolved display names for each affected monitor
+    monitor_names: w.monitor_ids
+      .map((mid) => {
+        const pm = pageMonitors.find((p) => p.monitor_id === mid);
+        return pm ? (pm.display_name || pm.monitor_name) : null;
+      })
+      .filter(Boolean),
+  }));
+
+  // Get active incidents for this page's monitors
   const activeIncidents = Incident.findAll({ status: "investigating" })
     .concat(Incident.findAll({ status: "identified" }))
     .concat(Incident.findAll({ status: "monitoring" }))
     .filter((inc) => !inc.monitor_id || monitorIds.includes(inc.monitor_id));
 
-  // Determine overall status
+  // Determine overall status — ignore paused and maintenance monitors
+  const activeMonitors = monitors.filter((m) => !m.is_paused && !m.in_maintenance);
   let overallStatus = "operational";
-  const hasDown = monitors.some((m) => m.current_status === "down");
-  const hasDegraded = monitors.some((m) => m.current_status === "degraded");
+  const hasDown = activeMonitors.some((m) => m.current_status === "down");
+  const hasDegraded = activeMonitors.some((m) => m.current_status === "degraded");
   if (hasDown) overallStatus = "major_outage";
   else if (hasDegraded) overallStatus = "degraded_performance";
   else if (activeIncidents.length > 0) overallStatus = "partial_outage";
@@ -90,6 +117,7 @@ router.get("/status/:slug", (req, res) => {
     },
     overallStatus,
     monitors,
+    activeMaintenanceWindows,
     activeIncidents: activeIncidents.map((inc) => ({
       id: inc.id,
       title: inc.title,
@@ -153,15 +181,23 @@ router.get("/status/:slug/monitors", (req, res) => {
   const pageMonitors = StatusPage.getMonitors(page.id);
 
   const monitors = pageMonitors.map((pm) => {
+    const monitor = Monitor.findById(pm.monitor_id);
     const latest = MonitorCheck.getLatestByMonitorId(pm.monitor_id);
     const uptime90 = MonitorCheck.getUptimePercentage(pm.monitor_id, daysAgo(90));
+    const is_paused = monitor ? !monitor.active : false;
+    const in_maintenance = !is_paused && Maintenance.isMonitorInMaintenance(pm.monitor_id);
+    let current_status = latest?.status || "unknown";
+    if (is_paused) current_status = "paused";
+    else if (in_maintenance) current_status = "maintenance";
 
     return {
       id: pm.monitor_id,
       name: pm.display_name || pm.monitor_name,
       type: pm.monitor_type,
       sort_order: pm.sort_order,
-      current_status: latest?.status || "unknown",
+      current_status,
+      is_paused,
+      in_maintenance,
       last_check: latest?.created_at || null,
       response_time_ms: page.show_values ? (latest?.response_time_ms || 0) : undefined,
       uptime_90d: uptime90,

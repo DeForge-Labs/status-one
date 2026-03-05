@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { getPublicStatusPage } from '@/lib/api';
 import UptimeBar from '@/components/uptime-bar';
 import { overallStatusInfo, relativeTime, formatMs, uptimeColor } from '@/lib/utils';
-import { CheckCircle2, XCircle, AlertTriangle, MinusCircle, Clock, ExternalLink, MessageSquare } from 'lucide-react';
+import { CheckCircle2, XCircle, AlertTriangle, MinusCircle, Clock, ExternalLink, MessageSquare, Wrench } from 'lucide-react';
 import clsx from 'clsx';
 import ThemeSelector from '@/components/theme-selector';
 
@@ -14,6 +14,7 @@ const statusIcons = {
   down: XCircle,
   degraded: AlertTriangle,
   maintenance: MinusCircle,
+  paused: MinusCircle,
   unknown: Clock,
 };
 
@@ -23,6 +24,7 @@ export default function PublicStatusPage({ params }) {
   const [monitors, setMonitors] = useState([]);
   const [incidents, setIncidents] = useState([]);
   const [messages, setMessages] = useState([]);
+  const [maintenanceWindows, setMaintenanceWindows] = useState([]);
   const [overallStatus, setOverallStatus] = useState('operational');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -35,6 +37,7 @@ export default function PublicStatusPage({ params }) {
         setMonitors(data.monitors || []);
         setIncidents(data.activeIncidents || []);
         setMessages(data.messages || []);
+        setMaintenanceWindows(data.activeMaintenanceWindows || []);
         setOverallStatus(data.overallStatus || 'operational');
       } catch (err) {
         setError('Status page not found');
@@ -128,6 +131,36 @@ export default function PublicStatusPage({ params }) {
         </div>
       )}
 
+      {/* Maintenance Banners */}
+      {maintenanceWindows.length > 0 && (
+        <div className="space-y-3 mb-8">
+          {maintenanceWindows.map(window => (
+            <div key={window.id} className="rounded-xl border border-blue-500/20 bg-blue-500/10 p-4 flex items-start gap-3">
+              <Wrench size={16} className="text-blue-500 mt-0.5 shrink-0" />
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-semibold text-blue-600 dark:text-blue-400">
+                  {window.title || 'Scheduled Maintenance'}
+                </p>
+                <p className="text-sm text-blue-600/80 dark:text-blue-400/80 mt-0.5">
+                  <>The following monitors are currently undergoing scheduled maintenance:</>
+                  <ol className="list-decimal list-inside text-sm text-blue-600/80 dark:text-blue-400/80">
+                    {window.monitor_names.map(monitor_name => (
+                        <li>{monitor_name}</li>                    
+                    ))}
+                  </ol>
+                </p>
+                {window.description && (
+                  <p className="text-xs text-blue-500/80 dark:text-blue-300/80 mt-2">{window.description}</p>
+                )}
+                <p className="text-xs text-blue-500/60 dark:text-blue-300/60 mt-1.5">
+                  {relativeTime(window.start_time)} — ends {relativeTime(window.end_time)}
+                </p>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
       {/* Monitor List */}
       <div className="space-y-3">
         {monitors.map(monitor => {
@@ -135,7 +168,10 @@ export default function PublicStatusPage({ params }) {
           const Icon = statusIcons[status] || Clock;
           const uptime = monitor.uptime_90d;
           return (
-            <div key={monitor.id} className="rounded-xl bg-[var(--color-surface)] border border-[var(--color-border)] p-4 sm:p-5">
+            <div key={monitor.id} className={clsx(
+              'rounded-xl bg-[var(--color-surface)] border p-4 sm:p-5',
+              status === 'maintenance' ? 'border-blue-500/30' : 'border-[var(--color-border)]'
+            )}>
               <div className="flex items-center justify-between mb-3">
                 <div className="relative flex items-center gap-2 min-w-0 group">
                   <Icon
@@ -144,7 +180,8 @@ export default function PublicStatusPage({ params }) {
                       status === 'up' && 'text-green-500',
                       status === 'degraded' && 'text-yellow-500',
                       status === 'down' && 'text-red-500',
-                      !['up', 'degraded', 'down'].includes(status) && 'text-[var(--color-text-tertiary)]',
+                      status === 'maintenance' && 'text-blue-500',
+                      !['up', 'degraded', 'down', 'maintenance'].includes(status) && 'text-[var(--color-text-tertiary)]',
                     )}
                   />
                   <span className="text-sm font-medium text-[var(--color-text)] truncate">{monitor.name}</span>
@@ -155,10 +192,16 @@ export default function PublicStatusPage({ params }) {
                   )}
                 </div>
                 <div className="flex items-center gap-3 text-xs text-[var(--color-text-secondary)] flex-shrink-0">
-                  {uptime != null && (
+                  {uptime != null && status !== 'paused' && status !== 'maintenance' && (
                     <span className={uptimeColor(uptime)}>{uptime.toFixed(2)}%</span>
                   )}
-                  {monitor.response_time_ms != null && (
+                  {status === 'paused' && (
+                    <span className="text-zinc-400">Paused</span>
+                  )}
+                  {status === 'maintenance' && (
+                    <span className="text-blue-500">Maintenance</span>
+                  )}
+                  {monitor.response_time_ms != null && status !== 'paused' && status !== 'maintenance' && (
                     <span>{formatMs(monitor.response_time_ms)}</span>
                   )}
                 </div>

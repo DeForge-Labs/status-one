@@ -145,8 +145,10 @@ export default function MonitorDetailPage({ params }) {
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         {['24h', '7d', '30d', '90d'].map(period => (
           <Card key={period} className="p-4 text-center">
-            <p className={clsx('text-xl font-bold', uptimeColor(uptime[period]))}>
-              {uptime[period] != null ? `${uptime[period].toFixed(2)}%` : '—'}
+            <p className={clsx('text-xl font-bold', monitor.current_status === 'maintenance' ? 'text-blue-500' : monitor.current_status === 'paused' ? 'text-zinc-400' : uptimeColor(uptime[period]))}>
+              {monitor.current_status === 'paused' || monitor.current_status === 'maintenance'
+                ? '—'
+                : uptime[period] != null ? `${uptime[period].toFixed(2)}%` : '—'}
             </p>
             <p className="text-xs text-[var(--color-text-tertiary)] mt-1">{period} uptime</p>
           </Card>

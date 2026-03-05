@@ -26,15 +26,24 @@ export default function UptimeBar({ days = [], checks, compact = false, monitorI
               className={clsx(
                 'rounded-[2px] transition-all duration-150 hover:scale-y-125 hover:opacity-90 cursor-pointer',
                 barHeight,
-                uptimeBgColor(day.uptime ?? -1)
+                uptimeBgColor(day.uptime ?? -1, day.status)
               )}
             />
             {/* Tooltip */}
             <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover/day:block z-20 pointer-events-none">
               <div className="bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 text-xs rounded-lg px-3 py-2 whitespace-nowrap shadow-lg">
                 <div className="font-medium">{day.date}</div>
-                <div>{day.uptime != null ? `${(day.uptime * (day.uptime <= 1 ? 100 : 1)).toFixed(2)}%` : 'No data'}</div>
-                {day.avg_response_time != null && (
+                {day.status === 'maintenance' ? (
+                  <div className="text-blue-400 dark:text-blue-500">Under Maintenance</div>
+                ) : day.status === 'paused' ? (
+                  <div className="text-zinc-400">Paused</div>
+                ) : (
+                  <div>{day.uptime != null ? `${(day.uptime * (day.uptime <= 1 ? 100 : 1)).toFixed(2)}%` : 'No data'}</div>
+                )}
+                {day.maintenance_minutes > 0 && day.status !== 'maintenance' && (
+                  <div className="text-blue-400 dark:text-blue-500">{day.maintenance_minutes}m maintenance</div>
+                )}
+                {day.avg_response_time != null && day.status !== 'maintenance' && day.status !== 'paused' && (
                   <div>{Math.round(day.avg_response_time)}ms avg</div>
                 )}
               </div>

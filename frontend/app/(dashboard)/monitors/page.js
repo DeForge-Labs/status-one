@@ -94,6 +94,7 @@ export default function MonitorsPage() {
           <option value="up">Up</option>
           <option value="down">Down</option>
           <option value="degraded">Degraded</option>
+          <option value="maintenance">Maintenance</option>
           <option value="paused">Paused</option>
         </select>
         <select
@@ -131,7 +132,8 @@ export default function MonitorsPage() {
                     !monitor.active ? 'bg-zinc-400' :
                     monitor.current_status === 'up' ? 'bg-green-500' :
                     monitor.current_status === 'down' ? 'bg-red-500' :
-                    monitor.current_status === 'degraded' ? 'bg-yellow-500' : 'bg-zinc-400'
+                    monitor.current_status === 'degraded' ? 'bg-yellow-500' :
+                    monitor.current_status === 'maintenance' ? 'bg-blue-500' : 'bg-zinc-400'
                   )} />
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2">
@@ -160,7 +162,9 @@ export default function MonitorsPage() {
                   )}
                   <div className="hidden sm:block text-right min-w-[80px]">
                     <p className={clsx('text-sm font-medium', uptimeColor(monitor.uptime?.['24h']))}>
-                      {monitor.uptime?.['24h'] != null ? `${monitor.uptime['24h'].toFixed(1)}%` : '—'}
+                      {monitor.is_paused || monitor.current_status === 'paused' || monitor.current_status === 'maintenance'
+                        ? '—'
+                        : monitor.uptime?.['24h'] != null ? `${monitor.uptime['24h'].toFixed(1)}%` : '—'}
                     </p>
                     <p className="text-[10px] text-[var(--color-text-tertiary)]">24h</p>
                   </div>

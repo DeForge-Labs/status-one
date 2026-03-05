@@ -58,7 +58,8 @@ function isStatusCodeAccepted(statusCode, accepted) {
 }
 
 function nowISO() {
-  return new Date().toISOString().replace("T", " ").substring(0, 19);
+  // return new Date().toISOString().replace("T", " ").substring(0, 19);
+  return new Date().toISOString();
 }
 
 function dateToISO(date) {

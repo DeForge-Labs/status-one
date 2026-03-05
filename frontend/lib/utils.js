@@ -32,7 +32,9 @@ export function uptimeColor(pct) {
   return 'text-red-500';
 }
 
-export function uptimeBgColor(pct) {
+export function uptimeBgColor(pct, dayStatus = null) {
+  if (dayStatus === 'maintenance') return 'bg-blue-500';
+  if (dayStatus === 'paused') return 'bg-zinc-300 dark:bg-zinc-700';
   if (pct >= 99.5) return 'bg-green-500';
   if (pct >= 80) return 'bg-yellow-500';
   if (pct > 0) return 'bg-red-500';
@@ -44,6 +46,8 @@ export function statusColor(status) {
     case 'up': return 'bg-green-500';
     case 'down': return 'bg-red-500';
     case 'degraded': return 'bg-yellow-500';
+    case 'maintenance': return 'bg-blue-500';
+    case 'paused': return 'bg-zinc-400';
     default: return 'bg-zinc-400';
   }
 }
@@ -53,6 +57,8 @@ export function statusTextColor(status) {
     case 'up': return 'text-green-500';
     case 'down': return 'text-red-500';
     case 'degraded': return 'text-yellow-500';
+    case 'maintenance': return 'text-blue-500';
+    case 'paused': return 'text-zinc-400';
     default: return 'text-zinc-400';
   }
 }
@@ -63,6 +69,8 @@ export function statusLabel(status, active = true) {
     case 'up': return 'Up';
     case 'down': return 'Down';
     case 'degraded': return 'Degraded';
+    case 'maintenance': return 'Maintenance';
+    case 'paused': return 'Paused';
     default: return 'Unknown';
   }
 }

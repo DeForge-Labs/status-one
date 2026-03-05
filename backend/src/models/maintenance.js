@@ -2,15 +2,31 @@ const { getDb } = require("../database/connection");
 const { generateId, nowISO } = require("../utils/helpers");
 
 const Maintenance = {
+  // Fetch monitor_ids for each row in a single extra query and attach them as an array.
+  _attachMonitorIds(rows) {
+    if (rows.length === 0) return rows;
+    const db = getDb();
+    const placeholders = rows.map(() => "?").join(", ");
+    const links = db.prepare(
+      `SELECT maintenance_id, monitor_id FROM maintenance_monitors WHERE maintenance_id IN (${placeholders})`
+    ).all(...rows.map((r) => r.id));
+    const map = {};
+    for (const l of links) {
+      if (!map[l.maintenance_id]) map[l.maintenance_id] = [];
+      map[l.maintenance_id].push(l.monitor_id);
+    }
+    return rows.map((r) => ({ ...r, monitor_ids: map[r.id] || [] }));
+  },
+
   create(data) {
     const db = getDb();
     const id = generateId();
     const now = nowISO();
     db.prepare(`
-      INSERT INTO maintenance_windows (id, monitor_id, title, description, start_time, end_time, recurring, cron_expression, active, created_by, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO maintenance_windows (id, title, description, start_time, end_time, recurring, cron_expression, active, created_by, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
-      id, data.monitor_id || null, data.title, data.description || "",
+      id, data.title, data.description || "",
       data.start_time, data.end_time, data.recurring ? 1 : 0,
       data.cron_expression || "", data.active !== false ? 1 : 0,
       data.created_by || null, now, now
@@ -21,11 +37,11 @@ const Maintenance = {
   findById(id) {
     const db = getDb();
     const row = db.prepare("SELECT * FROM maintenance_windows WHERE id = ?").get(id);
-    if (row) {
-      row.recurring = !!row.recurring;
-      row.active = !!row.active;
-    }
-    return row;
+    if (!row) return null;
+    row.recurring = !!row.recurring;
+    row.active = !!row.active;
+    const [enriched] = this._attachMonitorIds([row]);
+    return enriched;
   },
 
   findAll({ status, monitor_id, limit, offset } = {}) {
@@ -38,7 +54,7 @@ const Maintenance = {
       query += " AND active = 0";
     }
     if (monitor_id) {
-      query += " AND monitor_id = ?";
+      query += " AND id IN (SELECT maintenance_id FROM maintenance_monitors WHERE monitor_id = ?)";
       params.push(monitor_id);
     }
     query += " ORDER BY start_time DESC";
@@ -46,27 +62,32 @@ const Maintenance = {
       query += " LIMIT ? OFFSET ?";
       params.push(limit, offset || 0);
     }
-    return db.prepare(query).all(...params).map((row) => {
+    const rows = db.prepare(query).all(...params).map((row) => {
       row.recurring = !!row.recurring;
       row.active = !!row.active;
       return row;
     });
+    return this._attachMonitorIds(rows);
   },
 
   findActiveForMonitor(monitorId) {
     const db = getDb();
     const now = nowISO();
-    return db.prepare(`
+    const rows = db.prepare(`
       SELECT * FROM maintenance_windows
       WHERE active = 1
         AND start_time <= ?
         AND end_time >= ?
-        AND (monitor_id IS NULL OR monitor_id = ?)
+        AND (
+          NOT EXISTS (SELECT 1 FROM maintenance_monitors mm WHERE mm.maintenance_id = maintenance_windows.id)
+          OR EXISTS (SELECT 1 FROM maintenance_monitors mm WHERE mm.maintenance_id = maintenance_windows.id AND mm.monitor_id = ?)
+        )
     `).all(now, now, monitorId).map((row) => {
       row.recurring = !!row.recurring;
       row.active = !!row.active;
       return row;
     });
+    return this._attachMonitorIds(rows);
   },
 
   isMonitorInMaintenance(monitorId) {
@@ -74,10 +95,44 @@ const Maintenance = {
     return windows.length > 0;
   },
 
+  // Returns all currently-running maintenance windows relevant to a list of monitor IDs.
+  // Includes global windows (no rows in maintenance_monitors) and windows targeting any of the given IDs.
+  findOngoingForMonitors(monitorIds) {
+    const db = getDb();
+    const now = nowISO();
+    let whereClause;
+    let params = [now, now];
+
+    if (!monitorIds || monitorIds.length === 0) {
+      whereClause = `NOT EXISTS (SELECT 1 FROM maintenance_monitors mm WHERE mm.maintenance_id = maintenance_windows.id)`;
+    } else {
+      const placeholders = monitorIds.map(() => "?").join(", ");
+      whereClause = `(
+          NOT EXISTS (SELECT 1 FROM maintenance_monitors mm WHERE mm.maintenance_id = maintenance_windows.id)
+          OR EXISTS (SELECT 1 FROM maintenance_monitors mm WHERE mm.maintenance_id = maintenance_windows.id AND mm.monitor_id IN (${placeholders}))
+        )`;
+      params = params.concat(monitorIds);
+    }
+
+    const rows = db.prepare(`
+      SELECT * FROM maintenance_windows
+      WHERE active = 1
+        AND start_time <= ?
+        AND end_time >= ?
+        AND ${whereClause}
+      ORDER BY start_time ASC
+    `).all(...params).map((row) => {
+      row.recurring = !!row.recurring;
+      row.active = !!row.active;
+      return row;
+    });
+    return this._attachMonitorIds(rows);
+  },
+
   update(id, data) {
     const db = getDb();
     const allowed = [
-      "monitor_id", "title", "description", "start_time", "end_time",
+      "title", "description", "start_time", "end_time",
       "recurring", "cron_expression", "active",
     ];
     const sets = [];
@@ -115,7 +170,7 @@ const Maintenance = {
       query += " AND active = 0";
     }
     if (monitor_id) {
-      query += " AND monitor_id = ?";
+      query += " AND id IN (SELECT maintenance_id FROM maintenance_monitors WHERE monitor_id = ?)";
       params.push(monitor_id);
     }
     return db.prepare(query).get(...params).count;
@@ -123,16 +178,14 @@ const Maintenance = {
 
   addMonitor(maintenanceId, monitorId) {
     const db = getDb();
-    // For now, maintenance_windows supports a single monitor_id column.
-    // To support multiple monitors, update the record or use a join table.
-    // Using simple approach: update the monitor_id if single monitor, 
-    // or we can store comma-separated. Let's keep it simple:
-    db.prepare("UPDATE maintenance_windows SET monitor_id = ? WHERE id = ?").run(monitorId, maintenanceId);
+    db.prepare(
+      "INSERT OR IGNORE INTO maintenance_monitors (maintenance_id, monitor_id) VALUES (?, ?)"
+    ).run(maintenanceId, monitorId);
   },
 
   clearMonitors(maintenanceId) {
     const db = getDb();
-    db.prepare("UPDATE maintenance_windows SET monitor_id = NULL WHERE id = ?").run(maintenanceId);
+    db.prepare("DELETE FROM maintenance_monitors WHERE maintenance_id = ?").run(maintenanceId);
   },
 };
 
