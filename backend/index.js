@@ -8,6 +8,7 @@ const monitorEngine = require("./src/services/monitorEngine");
 const analytics = require("./src/services/analytics");
 const dataRetention = require("./src/services/dataRetention");
 const heartbeat = require("./src/services/heartbeat");
+const backup = require("./src/services/backup");
 
 async function main() {
   logger.info("=== Status One - Starting Up ===");
@@ -44,6 +45,7 @@ async function main() {
   analytics.startCronJob();
   dataRetention.startCronJob();
   heartbeat.startExpiredCheck();
+  backup.startCronJob();
   logger.info("Scheduled jobs started.");
 
   logger.info("=== Status One - Ready ===");
@@ -60,6 +62,7 @@ async function main() {
     analytics.stopCronJob();
     dataRetention.stopCronJob();
     heartbeat.stopExpiredCheck();
+    backup.stopCronJob();
     logger.info("Cron jobs stopped.");
 
     // Close HTTP server

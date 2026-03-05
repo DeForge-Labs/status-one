@@ -15,6 +15,7 @@ const config = {
     from: process.env.SMTP_FROM || "Status One <noreply@example.com>",
   },
 
+  dataDir: path.join(process.cwd(), "data"),
   dbPath: path.join(process.cwd(), "data", "status-one.db"),
 
   rateLimiting: {

@@ -1,10 +1,12 @@
 const express = require("express");
 const router = express.Router();
+const path = require("path");
 const { authMiddleware } = require("../middleware/auth");
 const { getDb, resetDb, closeDb } = require("../database/connection");
 const { runMigrations } = require("../database/migrations");
 const { seedDefaults } = require("../database/seed");
 const monitorEngine = require("../services/monitorEngine");
+const backupService = require("../services/backup");
 const logger = require("../utils/logger");
 
 // GET /api/system/health - Health check
@@ -73,29 +75,15 @@ router.post("/factory-reset", authMiddleware, async (req, res) => {
   }
 });
 
-// POST /api/system/backup - Trigger database backup
+// POST /api/system/backup - Trigger a manual database backup
 router.post("/backup", authMiddleware, (req, res) => {
   try {
-    const db = getDb();
+    const backupPath = backupService.runBackup();
     const fs = require("fs");
-    const path = require("path");
-    const config = require("../config");
-
-    const backupDir = path.join(config.dataDir, "backups");
-    if (!fs.existsSync(backupDir)) {
-      fs.mkdirSync(backupDir, { recursive: true });
-    }
-
-    const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
-    const backupPath = path.join(backupDir, `backup-${timestamp}.db`);
-
-    // Use SQLite VACUUM INTO for consistent backup
-    db.run(`VACUUM INTO '${backupPath}'`);
-
     const stats = fs.statSync(backupPath);
     res.json({
       message: "Backup created successfully",
-      path: backupPath,
+      filename: path.basename(backupPath),
       size_bytes: stats.size,
       created_at: new Date().toISOString(),
     });
@@ -103,6 +91,46 @@ router.post("/backup", authMiddleware, (req, res) => {
     logger.error("Backup failed:", err);
     res.status(500).json({ error: "Backup failed: " + err.message });
   }
+});
+
+// GET /api/system/backups - List available backups
+router.get("/backups", authMiddleware, (req, res) => {
+  try {
+    const files = backupService.getBackupFiles();
+    res.json(
+      files.reverse().map((f) => ({
+        filename: f.name,
+        size_bytes: f.size,
+        created_at: f.mtime.toISOString(),
+      }))
+    );
+  } catch (err) {
+    logger.error("Failed to list backups:", err);
+    res.status(500).json({ error: "Failed to list backups: " + err.message });
+  }
+});
+
+// GET /api/system/backups/:filename - Download a backup file
+router.get("/backups/:filename", authMiddleware, (req, res) => {
+  const fs = require("fs");
+  const filename = path.basename(req.params.filename); // prevent path traversal
+
+  if (!filename.endsWith(".db")) {
+    return res.status(400).json({ error: "Invalid backup filename" });
+  }
+
+  const filePath = path.join(backupService.backupDir, filename);
+
+  if (!fs.existsSync(filePath)) {
+    return res.status(404).json({ error: "Backup not found" });
+  }
+
+  res.download(filePath, filename, (err) => {
+    if (err && !res.headersSent) {
+      logger.error("Download failed:", err);
+      res.status(500).json({ error: "Download failed" });
+    }
+  });
 });
 
 // POST /api/system/purge-checks - Purge old check data
