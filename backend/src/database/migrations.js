@@ -1,7 +1,7 @@
 const { getDb } = require("./connection");
 const logger = require("../utils/logger");
 
-const SCHEMA_VERSION = 3;
+const SCHEMA_VERSION = 1;
 
 function runMigrations() {
   const db = getDb();
@@ -19,53 +19,14 @@ function runMigrations() {
 
   if (currentVersion < 1) {
     logger.info("Running migration v1: initial schema");
-    migrateV1(db);
+    migrate(db);
     db.run("INSERT INTO schema_version (version) VALUES (1)");
-  }
-
-  if (currentVersion < 2) {
-    logger.info("Running migration v2: telegram subscribers");
-    migrateV2(db);
-    db.run("INSERT INTO schema_version (version) VALUES (2)");
-  }
-
-  if (currentVersion < 3) {
-    logger.info("Running migration v3: maintenance monitor join table");
-    migrateV3(db);
-    db.run("INSERT INTO schema_version (version) VALUES (3)");
   }
 
   logger.info(`Database schema at version ${SCHEMA_VERSION}`);
 }
 
-function migrateV3(db) {
-  db.run(`
-    CREATE TABLE IF NOT EXISTS maintenance_monitors (
-      maintenance_id TEXT NOT NULL PRIMARY KEY,
-      FOREIGN KEY (maintenance_id) REFERENCES maintenance_windows(id) ON DELETE CASCADE
-    )
-  `);
-
-  db.run(
-    "CREATE INDEX IF NOT EXISTS idx_maintenance_monitors_maintenance ON maintenance_monitors(maintenance_id)"
-  );
-}
-
-function migrateV2(db) {
-  db.run(`
-    CREATE TABLE IF NOT EXISTS telegram_subscribers (
-      id TEXT PRIMARY KEY,
-      notification_channel_id TEXT NOT NULL,
-      chat_id TEXT NOT NULL,
-      username TEXT DEFAULT '',
-      created_at TEXT DEFAULT (datetime('now')),
-      FOREIGN KEY (notification_channel_id) REFERENCES notification_channels(id) ON DELETE CASCADE,
-      UNIQUE(notification_channel_id, chat_id)
-    )
-  `);
-}
-
-function migrateV1(db) {
+function migrate(db) {
   db.run(`
     CREATE TABLE IF NOT EXISTS users (
       id TEXT PRIMARY KEY,
@@ -276,7 +237,6 @@ function migrateV1(db) {
   db.run(`
     CREATE TABLE IF NOT EXISTS maintenance_windows (
       id TEXT PRIMARY KEY,
-      monitor_id TEXT,
       title TEXT NOT NULL,
       description TEXT DEFAULT '',
       start_time TEXT NOT NULL,
@@ -287,8 +247,29 @@ function migrateV1(db) {
       created_by TEXT,
       created_at TEXT DEFAULT (datetime('now')),
       updated_at TEXT DEFAULT (datetime('now')),
-      FOREIGN KEY (monitor_id) REFERENCES monitors(id) ON DELETE CASCADE,
       FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
+    )
+  `);
+
+  db.run(`
+    CREATE TABLE IF NOT EXISTS maintenance_monitors (
+      maintenance_id TEXT NOT NULL,
+      monitor_id TEXT NOT NULL,
+      PRIMARY KEY (maintenance_id, monitor_id),
+      FOREIGN KEY (maintenance_id) REFERENCES maintenance_windows(id) ON DELETE CASCADE,
+      FOREIGN KEY (monitor_id) REFERENCES monitors(id) ON DELETE CASCADE
+    )
+  `);
+
+  db.run(`
+    CREATE TABLE IF NOT EXISTS telegram_subscribers (
+      id TEXT PRIMARY KEY,
+      notification_channel_id TEXT NOT NULL,
+      chat_id TEXT NOT NULL,
+      username TEXT DEFAULT '',
+      created_at TEXT DEFAULT (datetime('now')),
+      FOREIGN KEY (notification_channel_id) REFERENCES notification_channels(id) ON DELETE CASCADE,
+      UNIQUE(notification_channel_id, chat_id)
     )
   `);
 
@@ -365,6 +346,12 @@ function migrateV1(db) {
   );
   db.run(
     "CREATE INDEX IF NOT EXISTS idx_maintenance_windows_time ON maintenance_windows(start_time, end_time)"
+  );
+  db.run(
+    "CREATE INDEX IF NOT EXISTS idx_maintenance_monitors_maintenance ON maintenance_monitors(maintenance_id)"
+  );
+  db.run(
+    "CREATE INDEX IF NOT EXISTS idx_maintenance_monitors_monitor ON maintenance_monitors(monitor_id)"
   );
   db.run(
     "CREATE INDEX IF NOT EXISTS idx_monitor_checks_status ON monitor_checks(monitor_id, status)"
