@@ -49,9 +49,6 @@ function migrateV3(db) {
   db.run(
     "CREATE INDEX IF NOT EXISTS idx_maintenance_monitors_maintenance ON maintenance_monitors(maintenance_id)"
   );
-  db.run(
-    "CREATE INDEX IF NOT EXISTS idx_maintenance_monitors_monitor ON maintenance_monitors(monitor_id)"
-  );
 }
 
 function migrateV2(db) {
