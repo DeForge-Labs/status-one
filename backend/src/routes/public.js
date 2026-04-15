@@ -39,7 +39,7 @@ router.get("/status/:slug", (req, res) => {
 
     const dailyStats = MonitorCheck.getDailyStatsRange(
       pm.monitor_id,
-      dateToISO(new Date(Date.now() - 30 * 86400000)),
+      dateToISO(new Date(Date.now() - 44 * 86400000)),
       dateToISO(new Date())
     );
 
