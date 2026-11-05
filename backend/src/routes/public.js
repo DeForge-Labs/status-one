@@ -34,6 +34,33 @@ function publicIncident(inc, pageMonitors) {
   };
 }
 
+function monitorState(monitorId) {
+  const monitor = Monitor.findById(monitorId);
+  const latest = MonitorCheck.getLatestByMonitorId(monitorId);
+  const is_paused = monitor ? !monitor.active : false;
+  const in_maintenance = !is_paused && Maintenance.isMonitorInMaintenance(monitorId);
+  let current_status = latest?.status || "unknown";
+  if (is_paused) current_status = "paused";
+  else if (in_maintenance) current_status = "maintenance";
+  return { monitor, latest, is_paused, in_maintenance, current_status };
+}
+
+function activeIncidentsFor(monitorIds) {
+  return Incident.findAll({ status: "investigating" })
+    .concat(Incident.findAll({ status: "identified" }))
+    .concat(Incident.findAll({ status: "monitoring" }))
+    .filter((inc) => !inc.monitor_id || monitorIds.includes(inc.monitor_id));
+}
+
+// Paused and maintenance monitors don't count
+function overallStatusOf(monitors, activeIncidents) {
+  const live = monitors.filter((m) => !m.is_paused && !m.in_maintenance);
+  if (live.some((m) => m.current_status === "down")) return "major_outage";
+  if (live.some((m) => m.current_status === "degraded")) return "degraded_performance";
+  if (activeIncidents.length > 0) return "partial_outage";
+  return "operational";
+}
+
 // GET /api/public/status/by-domain/:hostname - Lookup status page by custom domain
 router.get("/status/by-domain/:hostname", (req, res) => {
   const page = StatusPage.findByCustomDomain(req.params.hostname);
@@ -54,14 +81,8 @@ router.get("/status/:slug", (req, res) => {
 
   // Get current status for each monitor (including 30-day daily uptime)
   const monitors = pageMonitors.map((pm) => {
-    const monitor = Monitor.findById(pm.monitor_id);
-    const latest = MonitorCheck.getLatestByMonitorId(pm.monitor_id);
+    const { monitor, latest, is_paused, in_maintenance, current_status } = monitorState(pm.monitor_id);
     const uptime90 = MonitorCheck.getUptimePercentage(pm.monitor_id, daysAgo(90));
-    const is_paused = monitor ? !monitor.active : false;
-    const in_maintenance = !is_paused && Maintenance.isMonitorInMaintenance(pm.monitor_id);
-    let current_status = latest?.status || "unknown";
-    if (is_paused) current_status = "paused";
-    else if (in_maintenance) current_status = "maintenance";
 
     const dailyStats = MonitorCheck.getDailyStatsRange(
       pm.monitor_id,
@@ -112,20 +133,8 @@ router.get("/status/:slug", (req, res) => {
       .filter(Boolean),
   }));
 
-  // Get active incidents for this page's monitors
-  const activeIncidents = Incident.findAll({ status: "investigating" })
-    .concat(Incident.findAll({ status: "identified" }))
-    .concat(Incident.findAll({ status: "monitoring" }))
-    .filter((inc) => !inc.monitor_id || monitorIds.includes(inc.monitor_id));
-
-  // Determine overall status — ignore paused and maintenance monitors
-  const activeMonitors = monitors.filter((m) => !m.is_paused && !m.in_maintenance);
-  let overallStatus = "operational";
-  const hasDown = activeMonitors.some((m) => m.current_status === "down");
-  const hasDegraded = activeMonitors.some((m) => m.current_status === "degraded");
-  if (hasDown) overallStatus = "major_outage";
-  else if (hasDegraded) overallStatus = "degraded_performance";
-  else if (activeIncidents.length > 0) overallStatus = "partial_outage";
+  const activeIncidents = activeIncidentsFor(monitorIds);
+  const overallStatus = overallStatusOf(monitors, activeIncidents);
 
   // Get published messages
   const messages = StatusPage.getMessages(page.id, { published: true, limit: 10 });
@@ -425,6 +434,53 @@ router.get("/monitors/:id/badge", (req, res) => {
     "Access-Control-Allow-Origin": "*",
   });
   res.send(buildBadgeSvg(label, value, color, style));
+});
+
+// [label, light color, text width measured at 13px/500 Segoe UI; textLength fits other fonts to it]
+const PAGE_BADGE_LABELS = {
+  operational: ["All systems operational", "#22c55e", 137],
+  degraded_performance: ["Degraded performance", "#eab308", 138],
+  partial_outage: ["Partial outage", "#f97316", 83],
+  major_outage: ["Major outage", "#ef4444", 80],
+  unavailable: ["Status unavailable", "#a1a1aa", 106],
+};
+const PAGE_BADGE_THEMES = {
+  light: ".bg{fill:#fff;stroke:#e4e4e7}.tx{fill:#18181b}",
+  dark: ".bg{fill:#18181b;stroke:#3f3f46}.tx{fill:#fafafa}",
+};
+PAGE_BADGE_THEMES.auto = `${PAGE_BADGE_THEMES.light}@media (prefers-color-scheme: dark){${PAGE_BADGE_THEMES.dark}}`;
+
+// Pill with a status light, sized for landing page footers rather than READMEs
+function buildPageBadgeSvg([label, color, tw], theme) {
+  const w = 32 + tw + 14;
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="32" viewBox="0 0 ${w} 32" role="img" aria-label="${label}">
+  <title>${label}</title>
+  <style>${PAGE_BADGE_THEMES[theme]}.halo{animation:p 2s ease-in-out infinite}@keyframes p{50%{opacity:.1}}@media (prefers-reduced-motion:reduce){.halo{animation:none}}</style>
+  <rect class="bg" x=".5" y=".5" width="${w - 1}" height="31" rx="15.5"/>
+  <circle class="halo" cx="18" cy="16" r="7" fill="${color}" fill-opacity=".25"/>
+  <circle cx="18" cy="16" r="4" fill="${color}"/>
+  <text class="tx" x="32" y="20.5" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" font-size="13" font-weight="500" textLength="${tw}" lengthAdjust="spacing">${label}</text>
+</svg>`;
+}
+
+// GET /api/public/status/:slug/badge - Overall status badge for landing pages (SVG)
+// ?theme=light|dark|auto  (default: light; auto follows the visitor's OS setting)
+router.get("/status/:slug/badge", (req, res) => {
+  const theme = PAGE_BADGE_THEMES[req.query.theme] ? req.query.theme : "light";
+  const page = StatusPage.findBySlug(req.params.slug);
+
+  let status = "unavailable";
+  if (page && page.published) {
+    const monitorIds = StatusPage.getMonitorIds(page.id);
+    status = overallStatusOf(monitorIds.map(monitorState), activeIncidentsFor(monitorIds));
+  }
+
+  res.set({
+    "Content-Type": "image/svg+xml",
+    "Cache-Control": "public, max-age=60, stale-while-revalidate=300",
+    "Access-Control-Allow-Origin": "*",
+  });
+  res.send(buildPageBadgeSvg(PAGE_BADGE_LABELS[status], theme));
 });
 
 module.exports = router;

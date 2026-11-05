@@ -14,7 +14,7 @@ import Textarea from '@/components/ui/textarea';
 import Button from '@/components/ui/button';
 import { PageLoader } from '@/components/ui/spinner';
 import ConfirmDialog from '@/components/confirm-dialog';
-import { ArrowLeft, Plus, Trash2, Eye, Grip, Save, X, MessageSquare, Monitor } from 'lucide-react';
+import { ArrowLeft, Plus, Trash2, Eye, Grip, Save, X, MessageSquare, Monitor, Copy, Check } from 'lucide-react';
 import Link from 'next/link';
 import { formatDate, relativeTime } from '@/lib/utils';
 
@@ -37,6 +37,14 @@ export default function StatusPageEditorPage({ params }) {
   const [showDelete, setShowDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [tab, setTab] = useState('settings');
+  const [badgeTheme, setBadgeTheme] = useState('light');
+  const [copiedKey, setCopiedKey] = useState(null);
+
+  const copySnippet = (key, text) => {
+    navigator.clipboard.writeText(text);
+    setCopiedKey(key);
+    setTimeout(() => setCopiedKey(null), 2000);
+  };
 
   const fetchAll = async () => {
     try {
@@ -128,6 +136,16 @@ export default function StatusPageEditorPage({ params }) {
 
   const availableMonitors = allMonitors.filter(m => !pageMonitors.some(pm => pm.monitor_id === m.id));
 
+  // Embedded on other sites, so both URLs must be absolute
+  const apiBase = new URL(process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000/api', window.location.origin).href.replace(/\/$/, '');
+  const badgeUrl = `${apiBase}/public/status/${encodeURIComponent(pageData.slug)}/badge?theme=${badgeTheme}`;
+  const pageUrl = pageData.custom_domain ? `https://${pageData.custom_domain}` : `${window.location.origin}/status/${pageData.slug}`;
+  const badgeSnippets = [
+    { key: 'html', label: 'HTML / JSX', value: `<a href="${pageUrl}" target="_blank" rel="noopener"><img src="${badgeUrl}" alt="System status" height="32" /></a>` },
+    { key: 'badge', label: 'Badge image URL', value: badgeUrl },
+    { key: 'page', label: 'Status page URL', value: pageUrl },
+  ];
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -155,7 +173,7 @@ export default function StatusPageEditorPage({ params }) {
 
       {/* Tabs */}
       <div className="flex gap-1 border-b border-[var(--color-border)]">
-        {['settings', 'monitors', 'messages'].map(t => (
+        {['settings', 'monitors', 'messages', 'embed'].map(t => (
           <button
             key={t}
             onClick={() => setTab(t)}
@@ -295,6 +313,68 @@ export default function StatusPageEditorPage({ params }) {
             </Card>
           )}
         </div>
+      )}
+
+      {/* Embed Tab */}
+      {tab === 'embed' && (
+        <Card className="max-w-2xl">
+          <div className="space-y-4">
+            <div>
+              <h3 className="text-base font-semibold text-[var(--color-text)]">Status badge</h3>
+              <p className="text-sm text-[var(--color-text-secondary)] mt-1">
+                Shows the combined status of every monitor on this page. Put it in your site&#39;s footer; clicking it opens this status page.
+              </p>
+            </div>
+
+            {!pageData.published && (
+              <div className="p-3 rounded-lg bg-yellow-500/10 text-yellow-600 text-sm">
+                This page is not published, so the badge shows &quot;Status unavailable&quot;.
+              </div>
+            )}
+
+            <div className="flex flex-wrap items-center gap-3">
+              <div className="w-40">
+                <Select value={badgeTheme} onChange={e => { setBadgeTheme(e.target.value); setCopiedKey(null); }} aria-label="Badge theme">
+                  <option value="light">Light</option>
+                  <option value="dark">Dark</option>
+                  <option value="auto">Auto (visitor&#39;s OS)</option>
+                </Select>
+              </div>
+              <a
+                href={pageUrl}
+                target="_blank"
+                rel="noreferrer"
+                className={`inline-flex p-3 rounded-lg border border-[var(--color-border)] ${badgeTheme === 'dark' ? 'bg-zinc-950' : 'bg-zinc-100'}`}
+              >
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img key={badgeUrl} src={badgeUrl} alt="System status" height={32} className="h-8" />
+              </a>
+            </div>
+
+            {badgeSnippets.map(({ key, label, value }) => (
+              <div key={key}>
+                <p className="text-xs font-medium text-[var(--color-text-secondary)] mb-1">{label}</p>
+                <div className="flex items-center gap-2">
+                  <code className="flex-1 min-w-0 text-xs bg-[var(--color-bg)] border border-[var(--color-border)] rounded-lg px-3 py-2 text-[var(--color-text)] truncate font-mono">
+                    {value}
+                  </code>
+                  <button
+                    onClick={() => copySnippet(key, value)}
+                    className="flex-shrink-0 p-2 rounded-lg border border-[var(--color-border)] hover:bg-[var(--color-bg-tertiary)] text-[var(--color-text-secondary)] transition-colors cursor-pointer"
+                    title="Copy"
+                    aria-label={`Copy ${label}`}
+                  >
+                    {copiedKey === key ? <Check size={14} className="text-green-500" /> : <Copy size={14} />}
+                  </button>
+                </div>
+              </div>
+            ))}
+
+            <p className="text-[11px] text-[var(--color-text-tertiary)]">
+              The badge is served from the public API and refreshes about every minute.
+            </p>
+          </div>
+        </Card>
       )}
 
       <ConfirmDialog
