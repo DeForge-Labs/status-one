@@ -1,8 +1,10 @@
 const path = require("path");
 
+const PLACEHOLDER_JWT_SECRET = "change-me-to-a-random-secret";
+
 const config = {
   port: parseInt(process.env.PORT || "3000", 10),
-  jwtSecret: process.env.JWT_SECRET || "change-me-to-a-random-secret",
+  jwtSecret: process.env.JWT_SECRET || PLACEHOLDER_JWT_SECRET,
   jwtExpiresIn: "7d",
   resetTokenExpiresMinutes: 30,
 
@@ -31,5 +33,9 @@ const config = {
     statsRetentionDays: 365,
   },
 };
+
+if (config.jwtSecret === PLACEHOLDER_JWT_SECRET) {
+  console.warn("!!! WARNING: JWT_SECRET is unset or still the placeholder. Anyone can forge login tokens. Set JWT_SECRET to a long random string. !!!");
+}
 
 module.exports = config;

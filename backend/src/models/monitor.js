@@ -1,6 +1,20 @@
 const { getDb } = require("../database/connection");
 const { generateId, nowISO } = require("../utils/helpers");
 
+// One unparsable row must not break findAll/findById (and with them server boot)
+function parseHeaders(raw) {
+  try {
+    const h = JSON.parse(raw || "{}");
+    return h !== null && typeof h === "object" && !Array.isArray(h) ? h : {};
+  } catch {
+    return {};
+  }
+}
+
+function serializeHeaders(val) {
+  return JSON.stringify(typeof val === "string" ? parseHeaders(val) : val || {});
+}
+
 const Monitor = {
   create(data) {
     const db = getDb();
@@ -30,11 +44,11 @@ const Monitor = {
       data.type || "http",
       data.url || "",
       data.method || "GET",
-      JSON.stringify(data.headers || {}),
+      serializeHeaders(data.headers),
       data.body || "",
       data.interval_seconds || 60,
       data.timeout_ms || 10000,
-      data.retries || 3,
+      data.retries ?? 3,
       data.retry_interval_seconds || 10,
       data.expected_status || 200,
       data.keyword || "",
@@ -64,7 +78,7 @@ const Monitor = {
     const db = getDb();
     const row = db.prepare("SELECT * FROM monitors WHERE id = ?").get(id);
     if (row) {
-      row.headers = JSON.parse(row.headers || "{}");
+      row.headers = parseHeaders(row.headers);
       row.active = !!row.active;
     }
     return row;
@@ -80,7 +94,7 @@ const Monitor = {
     }
     query += " ORDER BY created_at DESC";
     return db.prepare(query).all(...params).map((row) => {
-      row.headers = JSON.parse(row.headers || "{}");
+      row.headers = parseHeaders(row.headers);
       row.active = !!row.active;
       return row;
     });
@@ -136,7 +150,7 @@ const Monitor = {
       if (allowed.includes(key) && val !== undefined) {
         sets.push(`${key} = ?`);
         if (key === "headers") {
-          values.push(typeof val === "string" ? val : JSON.stringify(val));
+          values.push(serializeHeaders(val));
         } else if (key === "active") {
           values.push(val ? 1 : 0);
         } else {
@@ -161,7 +175,7 @@ const Monitor = {
     const db = getDb();
     const row = db.prepare("SELECT * FROM monitors WHERE push_token = ? AND type = 'push'").get(token);
     if (row) {
-      row.headers = JSON.parse(row.headers || "{}");
+      row.headers = parseHeaders(row.headers);
       row.active = !!row.active;
     }
     return row;
@@ -193,7 +207,7 @@ const Monitor = {
       INNER JOIN monitor_notifications mn ON mn.notification_channel_id = nc.id
       WHERE mn.monitor_id = ? AND nc.active = 1
     `).all(monitorId).map((row) => {
-      row.config = JSON.parse(row.config || "{}");
+      row.config = require("./notificationChannel").parseConfig(row);
       row.active = !!row.active;
       return row;
     });
@@ -211,6 +225,21 @@ const Monitor = {
     db.prepare(
       "DELETE FROM monitor_notifications WHERE monitor_id = ? AND notification_channel_id = ?"
     ).run(monitorId, channelId);
+  },
+
+  // Replace all channel links in one transaction so a failure can't leave the monitor with none
+  setNotificationChannels(monitorId, channelIds) {
+    const db = getDb();
+    db.transaction(() => {
+      db.prepare("DELETE FROM monitor_notifications WHERE monitor_id = ?").run(monitorId);
+      for (const channelId of channelIds) this.addNotificationChannel(monitorId, channelId);
+    })();
+  },
+
+  findUnknownChannelIds(channelIds) {
+    const db = getDb();
+    const stmt = db.prepare("SELECT 1 FROM notification_channels WHERE id = ?");
+    return channelIds.filter((id) => !stmt.get(id));
   },
 
   getLinkedNotificationIds(monitorId) {

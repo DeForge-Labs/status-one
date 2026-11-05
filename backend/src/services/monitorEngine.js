@@ -25,6 +25,25 @@ const checkers = {
   push: null, // Push monitors are passive; handled by heartbeat service
 };
 
+// Checkers normally catch their own errors; this turns a throw or a hang into a down result
+// so the monitor keeps being checked instead of silently stalling.
+async function safeCheck(checker, monitor) {
+  const ms = (monitor.timeout_ms || 10000) + 5000;
+  let timer;
+  try {
+    return await Promise.race([
+      checker(monitor),
+      new Promise((_, reject) => {
+        timer = setTimeout(() => reject(new Error(`Check did not finish within ${ms}ms`)), ms);
+      }),
+    ]);
+  } catch (err) {
+    return { status: "down", response_time_ms: 0, status_code: 0, error_message: err.message, metadata: {} };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 async function runCheck(monitor) {
   if (checkInProgress.has(monitor.id)) {
     logger.debug(`Check already in progress for monitor ${monitor.id}, skipping`);
@@ -46,7 +65,7 @@ async function runCheck(monitor) {
       return null;
     }
 
-    const result = await checker(monitor);
+    const result = await safeCheck(checker, monitor);
 
     // Store the check result
     MonitorCheck.create({
@@ -153,7 +172,7 @@ async function testMonitor(monitor) {
   if (!checker) {
     return { status: "error", error_message: `No checker for type: ${monitor.type}` };
   }
-  return checker(monitor);
+  return safeCheck(checker, monitor);
 }
 
 function stopAll() { stop(); }

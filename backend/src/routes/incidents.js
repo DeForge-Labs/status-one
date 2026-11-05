@@ -65,6 +65,10 @@ router.post("/", authMiddleware, (req, res) => {
     return res.status(400).json({ error: "Invalid status" });
   }
 
+  if (monitor_id && (typeof monitor_id !== "string" || !Monitor.findById(monitor_id))) {
+    return res.status(400).json({ error: "Monitor not found" });
+  }
+
   const incident = Incident.create({
     monitor_id: monitor_id || null,
     title: sanitizeString(title, 500),
@@ -102,9 +106,6 @@ router.put("/:id", authMiddleware, (req, res) => {
       return res.status(400).json({ error: "Invalid status" });
     }
     updates.status = status;
-    if (status === "resolved") {
-      updates.resolved_at = new Date().toISOString();
-    }
   }
 
   const updated = Incident.update(req.params.id, updates);
@@ -134,11 +135,6 @@ router.post("/:id/updates", authMiddleware, async (req, res) => {
     message: sanitizeString(message, 5000),
     created_by: req.user.id,
   });
-
-  // If resolving, set resolved_at
-  if (status === "resolved") {
-    Incident.resolve(incident.id);
-  }
 
   // Send notification about the update
   const monitor = incident.monitor_id ? Monitor.findById(incident.monitor_id) : null;

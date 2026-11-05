@@ -8,6 +8,32 @@ const Maintenance = require("../models/maintenance");
 const { daysAgo, dateToISO } = require("../utils/helpers");
 const { validatePagination } = require("../utils/validators");
 
+// Auto incidents store raw checker errors (internal hosts/ports) and internal monitor names
+const AUTO_UPDATE_MESSAGES = {
+  investigating: "This service is not responding. We are investigating.",
+  resolved: "This service is back online.",
+};
+
+function publicIncident(inc, pageMonitors) {
+  const auto = inc.type === "auto";
+  const pm = pageMonitors.find((p) => p.monitor_id === inc.monitor_id);
+  return {
+    id: inc.id,
+    title: auto ? `${pm ? pm.display_name || pm.monitor_name : "Service"} is down` : inc.title,
+    status: inc.status,
+    type: inc.type,
+    started_at: inc.started_at,
+    resolved_at: inc.resolved_at,
+    updates: Incident.getUpdates(inc.id).map((u) => ({
+      id: u.id,
+      status: u.status,
+      // Updates written by a user are meant for the public; system ones are not
+      message: auto && !u.created_by ? AUTO_UPDATE_MESSAGES[u.status] || "" : u.message,
+      created_at: u.created_at,
+    })),
+  };
+}
+
 // GET /api/public/status/by-domain/:hostname - Lookup status page by custom domain
 router.get("/status/by-domain/:hostname", (req, res) => {
   const page = StatusPage.findByCustomDomain(req.params.hostname);
@@ -60,7 +86,7 @@ router.get("/status/:slug", (req, res) => {
         uptime: d.total_checks > 0
           ? parseFloat((((d.up_count + d.degraded_count) / d.total_checks) * 100).toFixed(2))
           : 100,
-        avg_response_time: Math.round(d.avg_response_time),
+        avg_response_time: page.show_values ? Math.round(d.avg_response_time) : undefined,
         total_checks: d.total_checks,
         down_count: d.down_count,
       })),
@@ -118,13 +144,12 @@ router.get("/status/:slug", (req, res) => {
     overallStatus,
     monitors,
     activeMaintenanceWindows,
-    activeIncidents: activeIncidents.map((inc) => ({
-      id: inc.id,
-      title: inc.title,
-      status: inc.status,
-      started_at: inc.started_at,
-      updates: Incident.getUpdates(inc.id),
-    })),
+    activeIncidents: activeIncidents.map((inc) => {
+      const pub = publicIncident(inc, pageMonitors);
+      // The page shows updates[0] as "Latest"
+      pub.updates.reverse();
+      return pub;
+    }),
     messages: messages.map((msg) => ({
       id: msg.id,
       title: msg.title,
@@ -161,7 +186,7 @@ router.get("/status/:slug/history", (req, res) => {
         uptime: d.total_checks > 0
           ? parseFloat((((d.up_count + d.degraded_count) / d.total_checks) * 100).toFixed(2))
           : 100,
-        avg_response_time: Math.round(d.avg_response_time),
+        avg_response_time: page.show_values ? Math.round(d.avg_response_time) : undefined,
         total_checks: d.total_checks,
         down_count: d.down_count,
       })),
@@ -236,24 +261,11 @@ router.get("/status/:slug/incidents", (req, res) => {
   }
 
   const { page: pageNum, limit, offset } = validatePagination(req.query);
-  const monitorIds = StatusPage.getMonitorIds(page.id);
+  const pageMonitors = StatusPage.getMonitors(page.id);
+  const monitorIds = pageMonitors.map((pm) => pm.monitor_id);
 
   const incidents = Incident.getForMonitorIds(monitorIds, { limit, offset });
-  const enriched = incidents.map((inc) => ({
-    id: inc.id,
-    title: inc.title,
-    status: inc.status,
-    type: inc.type,
-    started_at: inc.started_at,
-    resolved_at: inc.resolved_at,
-    updates: Incident.getUpdates(inc.id).map((u) => ({
-      status: u.status,
-      message: u.message,
-      created_at: u.created_at,
-    })),
-  }));
-
-  res.json({ incidents: enriched });
+  res.json({ incidents: incidents.map((inc) => publicIncident(inc, pageMonitors)) });
 });
 
 // Helpers for badge SVG generation

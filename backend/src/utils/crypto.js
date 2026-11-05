@@ -14,7 +14,8 @@ async function verifyPassword(password, hash) {
 }
 
 function generateToken(payload) {
-  return jwt.sign(payload, config.jwtSecret, {
+  // jti keeps tokens unique (sessions.token is UNIQUE; iat only has 1s resolution)
+  return jwt.sign({ ...payload, jti: randomBytes(16).toString("hex") }, config.jwtSecret, {
     expiresIn: config.jwtExpiresIn,
   });
 }

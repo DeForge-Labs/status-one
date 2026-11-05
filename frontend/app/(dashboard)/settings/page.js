@@ -1,18 +1,22 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { getSettings, updateSettings, factoryReset, getDatabaseBackup, purgeOldData, getSystemInfo } from '@/lib/api';
+import { getSettings, updateSettings, factoryReset, createBackup, getBackups, downloadBackup, purgeOldData, getSystemInfo } from '@/lib/api';
+import { formatBytes, formatDuration, formatDate } from '@/lib/utils';
 import Card from '@/components/ui/card';
 import Input from '@/components/ui/input';
 import Button from '@/components/ui/button';
 import { PageLoader } from '@/components/ui/spinner';
 import ConfirmDialog from '@/components/confirm-dialog';
-import { Save, AlertTriangle, Database, Download, Trash2, Info } from 'lucide-react';
+import { Save, AlertTriangle, Database, Download, Trash2, Info, Plus } from 'lucide-react';
 import ThemeSelector from '@/components/theme-selector';
 
 export default function SettingsPage() {
   const [settings, setSettings] = useState({});
   const [systemInfo, setSystemInfo] = useState(null);
+  const [backups, setBackups] = useState([]);
+  const [backingUp, setBackingUp] = useState(false);
+  const [showPurge, setShowPurge] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -22,17 +26,30 @@ export default function SettingsPage() {
   const [purging, setPurging] = useState(false);
   const [purgeDays, setPurgeDays] = useState(90);
 
+  const loadSystem = async () => {
+    const [info, list] = await Promise.all([getSystemInfo(), getBackups()]);
+    setSystemInfo(info);
+    setBackups(list || []);
+  };
+
   useEffect(() => {
     const load = async () => {
       try {
-        const [s, info] = await Promise.all([getSettings(), getSystemInfo()]);
+        const [s] = await Promise.all([getSettings(), loadSystem()]);
         setSettings(s.settings || s);
-        setSystemInfo(info);
-      } catch {}
+      } catch (err) {
+        setError(err.message);
+      }
       setLoading(false);
     };
     load();
   }, []);
+
+  const flash = (msg) => {
+    setError('');
+    setSuccess(msg);
+    setTimeout(() => setSuccess(''), 3000);
+  };
 
   const handleSave = async () => {
     setSaving(true);
@@ -51,35 +68,50 @@ export default function SettingsPage() {
   const handleReset = async () => {
     setResetting(true);
     try {
-      await factoryReset();
+      await factoryReset('FACTORY_RESET');
       localStorage.removeItem('status_one_token');
-      localStorage.removeItem('status_one_app_url_initialized');
+      localStorage.removeItem('status_one_user');
+      localStorage.removeItem('status_one_urls_initialized');
       window.location.href = '/setup';
-    } catch {}
+      return;
+    } catch (err) {
+      setError(err.message);
+      setShowReset(false);
+    }
     setResetting(false);
   };
 
   const handleBackup = async () => {
+    setBackingUp(true);
     try {
-      const blob = await getDatabaseBackup();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `status-one-backup-${new Date().toISOString().split('T')[0]}.sqlite`;
-      a.click();
-      URL.revokeObjectURL(url);
-    } catch {}
+      const { filename } = await createBackup();
+      await downloadBackup(filename);
+      await loadSystem();
+      flash('Backup created and downloaded');
+    } catch (err) {
+      setError(err.message);
+    }
+    setBackingUp(false);
+  };
+
+  const handleDownload = async (filename) => {
+    try {
+      await downloadBackup(filename);
+    } catch (err) {
+      setError(err.message);
+    }
   };
 
   const handlePurge = async () => {
     setPurging(true);
     try {
-      await purgeOldData(purgeDays);
-      setSuccess(`Purged data older than ${purgeDays} days`);
-      setTimeout(() => setSuccess(''), 3000);
+      const res = await purgeOldData(purgeDays);
+      await loadSystem();
+      flash(`Deleted ${res.deleted.toLocaleString()} checks older than ${purgeDays} days`);
     } catch (err) {
       setError(err.message);
     }
+    setShowPurge(false);
     setPurging(false);
   };
 
@@ -118,30 +150,77 @@ export default function SettingsPage() {
       {systemInfo && (
         <Card>
           <h3 className="text-base font-semibold text-[var(--color-text)] mb-4 flex items-center gap-2"><Info size={16} /> System Information</h3>
-          <div className="grid grid-cols-2 gap-3 text-sm">
-            {Object.entries(systemInfo).map(([key, value]) => (
-              <div key={key}>
-                <span className="text-[var(--color-text-tertiary)]">{key.replace(/_/g, ' ')}: </span>
-                <span className="text-[var(--color-text)] break-words">{typeof value === 'object' ? JSON.stringify(value) : String(value)}</span>
+          <dl className="grid grid-cols-2 sm:grid-cols-3 gap-4 text-sm">
+            {[
+              ['Version', systemInfo.version],
+              ['Runtime', systemInfo.runtime],
+              ['Uptime', formatDuration(systemInfo.uptime)],
+              ['Memory (RSS)', formatBytes(systemInfo.memory?.rss)],
+              ['Active monitors', systemInfo.engine?.activeMonitors ?? 0],
+              ['Users', systemInfo.database?.users ?? 0],
+            ].map(([label, value]) => (
+              <div key={label}>
+                <dt className="text-[var(--color-text-tertiary)]">{label}</dt>
+                <dd className="text-[var(--color-text)] font-medium mt-0.5">{value}</dd>
               </div>
             ))}
-          </div>
+          </dl>
         </Card>
       )}
 
       {/* Database */}
       <Card>
         <h3 className="text-base font-semibold text-[var(--color-text)] mb-4 flex items-center gap-2"><Database size={16} /> Database</h3>
-        <div className="space-y-4">
-          <div className="flex items-end gap-3">
-            <Button variant="outline" onClick={handleBackup}><Download size={14} /> Download Backup</Button>
+        <div className="space-y-5">
+          {systemInfo && (
+            <dl className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-sm">
+              {[
+                ['Data size', formatBytes(systemInfo.database?.size_bytes)],
+                ['On disk', formatBytes(systemInfo.database?.disk_bytes)],
+                ['Monitors', (systemInfo.database?.monitors ?? 0).toLocaleString()],
+                ['Checks stored', (systemInfo.database?.checks ?? 0).toLocaleString()],
+              ].map(([label, value]) => (
+                <div key={label}>
+                  <dt className="text-[var(--color-text-tertiary)]">{label}</dt>
+                  <dd className="text-[var(--color-text)] font-medium mt-0.5">{value}</dd>
+                </div>
+              ))}
+            </dl>
+          )}
+
+          <div>
+            <div className="flex flex-wrap items-center justify-between gap-3 mb-2">
+              <p className="text-sm font-medium text-[var(--color-text)]">Backups</p>
+              <Button variant="outline" size="sm" onClick={handleBackup} disabled={backingUp}>
+                <Plus size={14} /> {backingUp ? 'Creating...' : 'Create & download backup'}
+              </Button>
+            </div>
+            <p className="text-xs text-[var(--color-text-tertiary)] mb-3">Automatic backups run every 12 hours. The latest two automatic and two manual backups are kept.</p>
+            {backups.length === 0 ? (
+              <p className="text-sm text-[var(--color-text-secondary)]">No backups yet.</p>
+            ) : (
+              <ul className="divide-y divide-[var(--color-border)] border border-[var(--color-border)] rounded-lg">
+                {backups.map((b) => (
+                  <li key={b.filename} className="flex items-center justify-between gap-3 px-3 py-2 text-sm">
+                    <div className="min-w-0">
+                      <p className="text-[var(--color-text)] truncate">{b.filename.startsWith('manual-') ? 'Manual' : 'Automatic'} · {formatDate(b.created_at)}</p>
+                      <p className="text-xs text-[var(--color-text-tertiary)]">{formatBytes(b.size_bytes)}</p>
+                    </div>
+                    <Button variant="ghost" size="sm" onClick={() => handleDownload(b.filename)} aria-label={`Download ${b.filename}`}>
+                      <Download size={14} /> Download
+                    </Button>
+                  </li>
+                ))}
+              </ul>
+            )}
           </div>
+
           <div className="flex items-end gap-3">
             <div className="flex-1">
-              <Input label="Purge data older than (days)" type="number" min="7" value={purgeDays} onChange={e => setPurgeDays(parseInt(e.target.value) || 90)} />
+              <Input label="Purge check history older than (days)" type="number" min="2" value={purgeDays} onChange={e => setPurgeDays(parseInt(e.target.value) || 90)} />
             </div>
-            <Button variant="secondary" onClick={handlePurge} disabled={purging}>
-              <Trash2 size={14} /> {purging ? 'Purging...' : 'Purge'}
+            <Button variant="secondary" onClick={() => setShowPurge(true)} disabled={purging}>
+              <Trash2 size={14} /> Purge
             </Button>
           </div>
         </div>
@@ -155,6 +234,16 @@ export default function SettingsPage() {
         </p>
         <Button variant="danger" onClick={() => setShowReset(true)}>Factory Reset</Button>
       </Card>
+
+      <ConfirmDialog
+        open={showPurge}
+        onClose={() => setShowPurge(false)}
+        onConfirm={handlePurge}
+        loading={purging}
+        title="Purge check history"
+        confirmText="Purge"
+        message={`Delete all raw check results older than ${purgeDays} days? Daily uptime stats are kept. This cannot be undone.`}
+      />
 
       <ConfirmDialog
         open={showReset}

@@ -8,24 +8,28 @@ export function usePolling(fetchFn, interval = 30000, deps = []) {
   const [error, setError] = useState(null);
   const mountedRef = useRef(true);
   const fetchRef = useRef(fetchFn);
+  const seqRef = useRef(0);
 
   useEffect(() => {
     fetchRef.current = fetchFn;
   }, [fetchFn]);
 
   const refresh = useCallback(async () => {
+    // Only the most recently started request may update state (slow older responses are dropped).
+    const seq = ++seqRef.current;
+    const current = () => mountedRef.current && seq === seqRef.current;
     try {
       const result = await fetchRef.current();
-      if (mountedRef.current) {
+      if (current()) {
         setData(result);
         setError(null);
       }
     } catch (err) {
-      if (mountedRef.current) {
+      if (current()) {
         setError(err);
       }
     } finally {
-      if (mountedRef.current) {
+      if (current()) {
         setLoading(false);
       }
     }
@@ -36,10 +40,14 @@ export function usePolling(fetchFn, interval = 30000, deps = []) {
     setLoading(true);
     refresh();
 
-    const id = setInterval(refresh, interval);
+    // Pause while the tab is hidden; catch up as soon as it is visible again.
+    const tick = () => { if (!document.hidden) refresh(); };
+    const id = setInterval(tick, interval);
+    document.addEventListener('visibilitychange', tick);
     return () => {
       mountedRef.current = false;
       clearInterval(id);
+      document.removeEventListener('visibilitychange', tick);
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [interval, refresh, ...deps]);

@@ -26,6 +26,21 @@ export function formatMs(ms) {
   return `${(ms / 1000).toFixed(2)}s`;
 }
 
+export function formatBytes(bytes) {
+  if (!bytes) return '0 B';
+  const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+  const i = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
+  return `${(bytes / 1024 ** i).toFixed(i ? 1 : 0)} ${units[i]}`;
+}
+
+export function formatDuration(seconds) {
+  const s = Math.floor(seconds || 0);
+  const d = Math.floor(s / 86400), h = Math.floor((s % 86400) / 3600), m = Math.floor((s % 3600) / 60);
+  if (d) return `${d}d ${h}h`;
+  if (h) return `${h}h ${m}m`;
+  return `${m}m ${s % 60}s`;
+}
+
 export function uptimeColor(pct) {
   if (pct >= 99) return 'text-green-500';
   if (pct >= 80) return 'text-yellow-500';

@@ -10,13 +10,17 @@ import Input from '@/components/ui/input';
 import Textarea from '@/components/ui/textarea';
 import Button from '@/components/ui/button';
 import Modal from '@/components/ui/modal';
+import Select from '@/components/ui/select';
+import Pagination from '@/components/ui/pagination';
 import { PageLoader } from '@/components/ui/spinner';
 import EmptyState from '@/components/ui/empty-state';
 import ConfirmDialog from '@/components/confirm-dialog';
 import { Plus, Wrench, Trash2, Calendar, Clock, Pencil, RefreshCw } from 'lucide-react';
 import { formatDate } from '@/lib/utils';
 
-const EMPTY_FORM = { title: '', description: '', start_time: '', end_time: '', recurring: false, recurring_interval: '', monitor_ids: [] };
+const RECURRING_MS = { daily: 86400000, weekly: 7 * 86400000 };
+
+const EMPTY_FORM = { title: '', description: '', start_time: '', end_time: '', recurring: false, recurring_interval: 'weekly', monitor_ids: [] };
 
 function toDatetimeLocal(dateStr) {
   if (!dateStr) return '';
@@ -37,17 +41,29 @@ export default function MaintenancePage() {
   const [error, setError] = useState('');
   const [deleteId, setDeleteId] = useState(null);
   const [deleting, setDeleting] = useState(false);
+  const [page, setPage] = useState(1);
+  const [pagination, setPagination] = useState(null);
+  const [listError, setListError] = useState('');
 
   const fetchData = async () => {
+    setListError('');
     try {
-      const [mData, monData] = await Promise.all([getMaintenanceWindows(), getMonitors()]);
+      const [mData, monData] = await Promise.all([getMaintenanceWindows({ page, limit: 20 }), getMonitors()]);
+      // Deleting the last row on a later page would leave it empty; step back instead of showing a false empty state
+      if ((mData.maintenance || []).length === 0 && page > 1) {
+        setPage(page - 1);
+        return;
+      }
       setWindows(mData.maintenance || []);
+      setPagination(mData.pagination);
       setMonitors(monData.monitors || []);
-    } catch {}
+    } catch (err) {
+      setListError(err.message);
+    }
     setLoading(false);
   };
 
-  useEffect(() => { fetchData(); }, []);
+  useEffect(() => { fetchData(); }, [page]);
 
   const openCreate = () => {
     setEditWindow(null);
@@ -64,7 +80,7 @@ export default function MaintenancePage() {
       start_time: toDatetimeLocal(w.start_time),
       end_time: toDatetimeLocal(w.end_time),
       recurring: !!w.recurring,
-      recurring_interval: w.recurring_interval || '',
+      recurring_interval: w.recurring_interval || 'weekly',
       monitor_ids: w.monitor_ids || [],
     });
     setError('');
@@ -101,7 +117,7 @@ export default function MaintenancePage() {
   const handleDelete = async () => {
     if (!deleteId) return;
     setDeleting(true);
-    try { await deleteMaintenanceWindow(deleteId); fetchData(); } catch {}
+    try { await deleteMaintenanceWindow(deleteId); fetchData(); } catch (err) { setListError(err.message); }
     setDeleting(false);
     setDeleteId(null);
   };
@@ -118,13 +134,23 @@ export default function MaintenancePage() {
   if (loading) return <PageLoader />;
 
   const now = new Date();
-  const active = windows.filter(w => new Date(w.start_time) <= now && new Date(w.end_time) >= now);
-  const upcoming = windows.filter(w => new Date(w.start_time) > now);
-  const past = windows.filter(w => new Date(w.end_time) < now);
+  // Recurring windows are judged by their current or next occurrence, matching the backend
+  const occurrence = (w) => {
+    const start = new Date(w.start_time), end = new Date(w.end_time);
+    const step = w.recurring && RECURRING_MS[w.recurring_interval];
+    if (!step || end >= now) return { start, end };
+    const k = Math.ceil((now - end) / step);
+    return { start: new Date(+start + k * step), end: new Date(+end + k * step) };
+  };
+  const isActiveNow = (w) => { const o = occurrence(w); return w.active !== false && o.start <= now && o.end >= now; };
+  const isPastNow = (w) => occurrence(w).end < now;
+  const active = windows.filter(isActiveNow);
+  const upcoming = windows.filter(w => !isActiveNow(w) && !isPastNow(w));
+  const past = windows.filter(w => !isActiveNow(w) && isPastNow(w));
 
   const renderWindow = (w) => {
-    const isActive = new Date(w.start_time) <= now && new Date(w.end_time) >= now;
-    const isPast = new Date(w.end_time) < now;
+    const isActive = isActiveNow(w);
+    const isPast = isPastNow(w);
     return (
       <Card key={w.id}>
         <div className="flex items-start justify-between gap-3">
@@ -135,7 +161,7 @@ export default function MaintenancePage() {
               {isPast && <span className="text-[10px] px-1.5 py-0.5 rounded bg-[var(--color-bg-tertiary)] text-[var(--color-text-tertiary)]">Completed</span>}
               {w.recurring && (
                 <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-500 font-medium flex items-center gap-1">
-                  <RefreshCw size={9} /> Recurring
+                  <RefreshCw size={9} /> Recurring{w.recurring_interval ? ` · ${w.recurring_interval}` : ''}
                 </span>
               )}
             </div>
@@ -145,11 +171,11 @@ export default function MaintenancePage() {
                 <Calendar size={11} className="inline mr-1" />
                 {formatDate(w.start_time)} – {formatDate(w.end_time)}
               </span>
-              {w.monitor_ids?.length > 0 && (
-                <span className="text-xs text-[var(--color-text-tertiary)]">
-                  {w.monitor_ids.length} monitor{w.monitor_ids.length !== 1 ? 's' : ''}
-                </span>
-              )}
+              <span className="text-xs text-[var(--color-text-tertiary)]">
+                {w.is_global
+                  ? 'All monitors'
+                  : `${w.monitor_ids?.length || 0} monitor${w.monitor_ids?.length === 1 ? '' : 's'}`}
+              </span>
             </div>
           </div>
           <div className="flex items-center gap-1 shrink-0">
@@ -175,6 +201,8 @@ export default function MaintenancePage() {
         <Button onClick={openCreate}><Plus size={16} /> Schedule Maintenance</Button>
       </div>
 
+      {listError && <div className="p-3 rounded-lg bg-red-500/10 text-red-500 text-sm">{listError}</div>}
+
       {windows.length === 0 ? (
         <EmptyState icon={Wrench} title="No maintenance windows" description="Schedule maintenance to let users know when you're working on things" />
       ) : (
@@ -197,6 +225,7 @@ export default function MaintenancePage() {
               <div className="space-y-2">{past.map(renderWindow)}</div>
             </div>
           )}
+          <Pagination pagination={pagination} onPageChange={setPage} />
         </div>
       )}
 
@@ -221,16 +250,17 @@ export default function MaintenancePage() {
             <label htmlFor="recurring" className="text-sm text-[var(--color-text)] cursor-pointer">Recurring maintenance</label>
           </div>
           {form.recurring && (
-            <Input
-              label="Recurring Interval"
-              placeholder="e.g. weekly, monthly"
-              value={form.recurring_interval}
-              onChange={e => setForm({ ...form, recurring_interval: e.target.value })}
-            />
+            <Select label="Repeats" value={form.recurring_interval} onChange={e => setForm({ ...form, recurring_interval: e.target.value })}>
+              <option value="daily">Daily</option>
+              <option value="weekly">Weekly</option>
+            </Select>
           )}
           {monitors.length > 0 && (
             <div>
               <label className="block text-sm font-medium text-[var(--color-text)] mb-1.5">Affected Monitors</label>
+              <p className="text-xs text-[var(--color-text-tertiary)] mb-1.5">
+                {form.monitor_ids.length === 0 ? 'None selected: applies to All monitors' : `${form.monitor_ids.length} selected`}
+              </p>
               <div className="max-h-36 overflow-y-auto rounded-lg border border-[var(--color-input-border)] bg-[var(--color-input)] divide-y divide-[var(--color-border)]">
                 {monitors.map(m => (
                   <label key={m.id} className="flex items-center gap-2.5 px-3 py-2 cursor-pointer hover:bg-[var(--color-bg-tertiary)] transition-colors">

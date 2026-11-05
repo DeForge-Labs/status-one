@@ -30,9 +30,7 @@ export default function MonitorForm({ initialData, onSubmit, channels = [], tags
     body: initialData?.body || '',
     interval_seconds: initialData?.interval_seconds || 60,
     timeout_ms: initialData?.timeout_ms || 10000,
-    retries: initialData?.retries || 3,
-    retry_interval_seconds: initialData?.retry_interval_seconds || 10,
-    expected_status: initialData?.expected_status || 200,
+    retries: initialData?.retries ?? 3,
     keyword: initialData?.keyword || '',
     keyword_type: initialData?.keyword_type || 'contains',
     degraded_threshold_ms: initialData?.degraded_threshold_ms || 2000,
@@ -43,7 +41,6 @@ export default function MonitorForm({ initialData, onSubmit, channels = [], tags
     ssl_warn_days: initialData?.ssl_warn_days || 30,
     active: initialData?.active ?? true,
     accepted_status_codes: initialData?.accepted_status_codes || '200-299',
-    max_redirects: initialData?.max_redirects || 5,
     auth_method: initialData?.auth_method || 'none',
     auth_user: initialData?.auth_user || '',
     auth_pass: initialData?.auth_pass || '',
@@ -119,17 +116,15 @@ export default function MonitorForm({ initialData, onSubmit, channels = [], tags
         <Card>
           <h3 className="text-base font-semibold text-[var(--color-text)] mb-4">HTTP Settings</h3>
           <div className="space-y-4">
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <Select label="Method" value={form.method} onChange={e => update('method', e.target.value)}>
                 {httpMethods.map(m => <option key={m} value={m}>{m}</option>)}
               </Select>
-              <Input label="Expected Status" type="number" value={form.expected_status} onChange={e => update('expected_status', parseInt(e.target.value) || 200)} />
               <Input label="Accepted Status Codes" placeholder="200-299" value={form.accepted_status_codes} onChange={e => update('accepted_status_codes', e.target.value)} />
             </div>
             {['POST', 'PUT', 'PATCH'].includes(form.method) && (
               <Textarea label="Request Body" placeholder='{"key": "value"}' value={form.body} onChange={e => update('body', e.target.value)} />
             )}
-            <Input label="Max Redirects" type="number" min="0" max="20" value={form.max_redirects} onChange={e => update('max_redirects', parseInt(e.target.value) || 0)} />
             {/* Headers */}
             <div>
               <label className="block text-sm font-medium text-[var(--color-text)] mb-2">Headers</label>
@@ -196,11 +191,10 @@ export default function MonitorForm({ initialData, onSubmit, channels = [], tags
       {/* Timing */}
       <Card>
         <h3 className="text-base font-semibold text-[var(--color-text)] mb-4">Timing & Retries</h3>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <Input label="Check Interval (s)" type="number" min="10" max="86400" value={form.interval_seconds} onChange={e => update('interval_seconds', parseInt(e.target.value) || 60)} />
           <Input label="Timeout (ms)" type="number" min="1000" value={form.timeout_ms} onChange={e => update('timeout_ms', parseInt(e.target.value) || 10000)} />
           <Input label="Retries" type="number" min="0" max="10" value={form.retries} onChange={e => update('retries', parseInt(e.target.value) || 0)} />
-          <Input label="Retry Interval (s)" type="number" min="1" value={form.retry_interval_seconds} onChange={e => update('retry_interval_seconds', parseInt(e.target.value) || 10)} />
         </div>
         <div className="mt-4">
           <Input label="Degraded Threshold (ms)" type="number" min="0" value={form.degraded_threshold_ms} onChange={e => update('degraded_threshold_ms', parseInt(e.target.value) || 2000)} />

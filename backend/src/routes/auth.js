@@ -5,20 +5,19 @@ const Settings = require("../models/settings");
 const {
   hashPassword,
   verifyPassword,
-  generateToken,
   generateResetToken,
 } = require("../utils/crypto");
 const { isValidEmail } = require("../utils/validators");
-const { authMiddleware } = require("../middleware/auth");
+const { authMiddleware, asyncHandler, createSession, revokeSessions } = require("../middleware/auth");
 const { getDb } = require("../database/connection");
 const { generateId, nowISO } = require("../utils/helpers");
 const emailService = require("../services/email");
 
 // POST /api/auth/login
-router.post("/login", async (req, res) => {
+router.post("/login", asyncHandler(async (req, res) => {
   const { email, password } = req.body;
 
-  if (!email || !password) {
+  if (!email || !password || typeof email !== "string" || typeof password !== "string") {
     return res.status(400).json({ error: "Email and password are required" });
   }
 
@@ -32,14 +31,7 @@ router.post("/login", async (req, res) => {
     return res.status(401).json({ error: "Invalid email or password" });
   }
 
-  const token = generateToken({ userId: user.id });
-
-  // Store session
-  const db = getDb();
-  const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
-  db.prepare(
-    "INSERT INTO sessions (id, user_id, token, expires_at, created_at) VALUES (?, ?, ?, ?, ?)"
-  ).run(generateId(), user.id, token, expiresAt, nowISO());
+  const token = createSession(user.id);
 
   res.json({
     token,
@@ -49,7 +41,7 @@ router.post("/login", async (req, res) => {
       name: user.name,
     },
   });
-});
+}));
 
 // POST /api/auth/logout
 router.post("/logout", authMiddleware, (req, res) => {
@@ -68,21 +60,27 @@ router.get("/me", authMiddleware, (req, res) => {
 });
 
 // PUT /api/auth/me - Update own profile
-router.put("/me", authMiddleware, async (req, res) => {
+router.put("/me", authMiddleware, asyncHandler(async (req, res) => {
   const { name, email, current_password, new_password } = req.body;
 
   const updates = {};
 
-  if (name) updates.name = name.trim();
+  if (name) {
+    if (typeof name !== "string") return res.status(400).json({ error: "Invalid name" });
+    updates.name = name.trim();
+  }
   if (email) {
-    if (!isValidEmail(email)) {
+    if (typeof email !== "string" || !isValidEmail(email)) {
       return res.status(400).json({ error: "Invalid email" });
     }
     updates.email = email;
   }
 
   if (new_password) {
-    if (!current_password) {
+    if (typeof new_password !== "string") {
+      return res.status(400).json({ error: "Invalid password" });
+    }
+    if (!current_password || typeof current_password !== "string") {
       return res.status(400).json({ error: "Current password is required to change password" });
     }
     const fullUser = User.findByEmail(req.user.email);
@@ -96,15 +94,26 @@ router.put("/me", authMiddleware, async (req, res) => {
     updates.password_hash = await hashPassword(new_password);
   }
 
-  const user = User.update(req.user.id, updates);
+  let user;
+  try {
+    user = User.update(req.user.id, updates);
+  } catch (err) {
+    if (err.message?.includes("UNIQUE")) {
+      return res.status(409).json({ error: "Email already exists" });
+    }
+    throw err;
+  }
+  if (updates.password_hash) {
+    revokeSessions(req.user.id, req.headers.authorization.substring(7));
+  }
   res.json({ user });
-});
+}));
 
 // POST /api/auth/change-password - Dedicated change password endpoint
-router.post("/change-password", authMiddleware, async (req, res) => {
+router.post("/change-password", authMiddleware, asyncHandler(async (req, res) => {
   const { current_password, new_password } = req.body;
 
-  if (!current_password || !new_password) {
+  if (!current_password || !new_password || typeof current_password !== "string" || typeof new_password !== "string") {
     return res.status(400).json({ error: "Current password and new password are required" });
   }
 
@@ -120,15 +129,16 @@ router.post("/change-password", authMiddleware, async (req, res) => {
 
   const password_hash = await hashPassword(new_password);
   User.update(req.user.id, { password_hash });
+  revokeSessions(req.user.id, req.headers.authorization.substring(7));
 
   res.json({ message: "Password changed successfully" });
-});
+}));
 
 // POST /api/auth/forgot-password
-router.post("/forgot-password", async (req, res) => {
+router.post("/forgot-password", asyncHandler(async (req, res) => {
   const { email } = req.body;
 
-  if (!email) {
+  if (!email || typeof email !== "string") {
     return res.status(400).json({ error: "Email is required" });
   }
 
@@ -147,7 +157,7 @@ router.post("/forgot-password", async (req, res) => {
       "INSERT INTO password_resets (id, user_id, token, expires_at, created_at) VALUES (?, ?, ?, ?, ?)"
     ).run(generateId(), user.id, resetToken, expiresAt, nowISO());
 
-    const appUrl = Settings.get("app_url") || "http://localhost:3000";
+    const appUrl = Settings.get("site_url") || Settings.get("app_url") || "http://localhost:3000";
     await emailService.sendPasswordReset(user.email, resetToken, appUrl);
   } catch (err) {
     // Log but don't expose SMTP errors
@@ -155,13 +165,13 @@ router.post("/forgot-password", async (req, res) => {
   }
 
   res.json({ message: "If the email exists, a password reset link has been sent" });
-});
+}));
 
 // POST /api/auth/reset-password
-router.post("/reset-password", async (req, res) => {
+router.post("/reset-password", asyncHandler(async (req, res) => {
   const { token, password } = req.body;
 
-  if (!token || !password) {
+  if (!token || !password || typeof token !== "string" || typeof password !== "string") {
     return res.status(400).json({ error: "Token and password are required" });
   }
 
@@ -185,9 +195,9 @@ router.post("/reset-password", async (req, res) => {
   db.prepare("UPDATE password_resets SET used = 1 WHERE id = ?").run(reset.id);
 
   // Invalidate all sessions for this user
-  db.prepare("DELETE FROM sessions WHERE user_id = ?").run(reset.user_id);
+  revokeSessions(reset.user_id);
 
   res.json({ message: "Password has been reset. Please log in with your new password." });
-});
+}));
 
 module.exports = router;

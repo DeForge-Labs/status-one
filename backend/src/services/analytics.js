@@ -90,34 +90,69 @@ function stop() {
 
 // --- Query functions for the analytics route ---
 
+// One grouped query for uptime/avg response of all monitors (degraded counts as up, like getUptimePercentage).
+function getStatsByMonitor() {
+  const { getDb } = require("../database/connection");
+  const { daysAgo } = require("../utils/helpers");
+  const d1 = daysAgo(1), d7 = daysAgo(7), d30 = daysAgo(30);
+  const up = "status IN ('up','degraded')";
+  const rows = getDb().prepare(`
+    SELECT monitor_id,
+      SUM(created_at >= ?) AS t1, SUM(created_at >= ? AND ${up}) AS u1,
+      SUM(created_at >= ?) AS t7, SUM(created_at >= ? AND ${up}) AS u7,
+      COUNT(*) AS t30, SUM(${up}) AS u30,
+      AVG(CASE WHEN created_at >= ? AND status != 'down' THEN response_time_ms END) AS rt1
+    FROM monitor_checks WHERE created_at >= ? GROUP BY monitor_id
+  `).all(d1, d1, d7, d7, d1, d30);
+  return new Map(rows.map((r) => [r.monitor_id, r]));
+}
+
+const pct = (up, total) => (total ? parseFloat(((up / total) * 100).toFixed(3)) : 100);
+
 function getOverview() {
   const monitors = Monitor.findAll();
-  const { daysAgo } = require("../utils/helpers");
-  
+  const Maintenance = require("../models/maintenance");
+  const stats = getStatsByMonitor();
+
   const overview = monitors.map((m) => {
     const latest = MonitorCheck.getLatestByMonitorId(m.id);
-    const uptime24h = MonitorCheck.getUptimePercentage(m.id, daysAgo(1));
-    const uptime7d = MonitorCheck.getUptimePercentage(m.id, daysAgo(7));
-    const uptime30d = MonitorCheck.getUptimePercentage(m.id, daysAgo(30));
-    const avgRt = MonitorCheck.getAvgResponseTime(m.id, daysAgo(1));
+    const s = stats.get(m.id) || {};
+    const current_status = latest?.status || "unknown";
+    // Display status: what the dashboard should show (paused/maintenance override the last check).
+    const status = !m.active ? "paused" : Maintenance.isMonitorInMaintenance(m.id) ? "maintenance" : current_status;
 
     return {
       id: m.id,
       name: m.name,
       type: m.type,
       url: m.url,
+      hostname: m.hostname,
       active: m.active,
-      current_status: latest?.status || "unknown",
+      status,
+      current_status,
       last_check: latest?.created_at || null,
       response_time_ms: latest?.response_time_ms || 0,
-      avg_response_time_24h: avgRt,
-      uptime_24h: uptime24h,
-      uptime_7d: uptime7d,
-      uptime_30d: uptime30d,
+      avg_response_time_24h: s.rt1 ? Math.round(s.rt1) : 0,
+      uptime_24h: pct(s.u1, s.t1),
+      uptime_7d: pct(s.u7, s.t7),
+      uptime_30d: pct(s.u30, s.t30),
     };
   });
 
   return { monitors: overview };
+}
+
+// Global uptime over all checks; degraded counts as up.
+function getGlobalUptime() {
+  const { getDb } = require("../database/connection");
+  const { daysAgo } = require("../utils/helpers");
+  const d1 = daysAgo(1);
+  const up = "status IN ('up','degraded')";
+  const r = getDb().prepare(`
+    SELECT SUM(created_at >= ?) AS t1, SUM(created_at >= ? AND ${up}) AS u1, COUNT(*) AS t30, SUM(${up}) AS u30
+    FROM monitor_checks WHERE created_at >= ?
+  `).get(d1, d1, daysAgo(30));
+  return { uptime24h: pct(r.u1, r.t1), uptime30d: pct(r.u30, r.t30) };
 }
 
 function getResponseTimes(monitorId, hours = 24) {
@@ -149,4 +184,4 @@ function getAvailability(monitorId, days = 30) {
 function startCronJob() { start(); }
 function stopCronJob() { stop(); }
 
-module.exports = { start, stop, startCronJob, stopCronJob, runAggregation, aggregateDayForMonitor, getOverview, getResponseTimes, getAvailability };
+module.exports = { start, stop, startCronJob, stopCronJob, runAggregation, aggregateDayForMonitor, getOverview, getGlobalUptime, getResponseTimes, getAvailability };

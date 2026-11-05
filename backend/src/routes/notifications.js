@@ -9,6 +9,21 @@ const webhook = require("../services/webhook");
 const discord = require("../services/discord");
 const Settings = require("../models/settings");
 
+// Used by create and update. Returns an error message, or null once Telegram has the webhook.
+async function registerTelegramWebhook(channelId, config) {
+  const appUrl = Settings.get("app_url");
+  if (!appUrl) {
+    return "app_url is not configured. Set it in Settings before configuring a Telegram channel.";
+  }
+  const webhookUrl = `${appUrl.replace(/\/$/, "")}/api/telegram/webhook/${channelId}`;
+  try {
+    await telegram.registerWebhook(config.bot_token, webhookUrl, config.webhook_secret);
+    return null;
+  } catch (err) {
+    return `Failed to register Telegram webhook: ${err.message}`;
+  }
+}
+
 // GET /api/notifications - List notification channels
 router.get("/", authMiddleware, (req, res) => {
   const channels = NotificationChannel.findAll();
@@ -71,17 +86,10 @@ router.post("/", authMiddleware, async (req, res) => {
 
   // Register the Telegram bot webhook immediately after channel creation
   if (type === "telegram") {
-    const appUrl = Settings.get("app_url");
-    if (!appUrl) {
+    const registerError = await registerTelegramWebhook(channel.id, config);
+    if (registerError) {
       NotificationChannel.delete(channel.id);
-      return res.status(400).json({ error: "app_url is not configured. Set it in Settings before creating a Telegram channel." });
-    }
-    const webhookUrl = `${appUrl.replace(/\/$/, "")}/api/telegram/webhook/${channel.id}`;
-    try {
-      await telegram.registerWebhook(config.bot_token, webhookUrl, config.webhook_secret);
-    } catch (err) {
-      NotificationChannel.delete(channel.id);
-      return res.status(400).json({ error: `Failed to register Telegram webhook: ${err.message}` });
+      return res.status(400).json({ error: registerError });
     }
   }
 
@@ -89,7 +97,7 @@ router.post("/", authMiddleware, async (req, res) => {
 });
 
 // PUT /api/notifications/:id - Update notification channel
-router.put("/:id", authMiddleware, (req, res) => {
+router.put("/:id", authMiddleware, async (req, res) => {
   const channel = NotificationChannel.findById(req.params.id);
   if (!channel) {
     return res.status(404).json({ error: "Notification channel not found" });
@@ -97,8 +105,26 @@ router.put("/:id", authMiddleware, (req, res) => {
 
   const updates = {};
   if (req.body.name) updates.name = sanitizeString(req.body.name, 200);
-  if (req.body.config) updates.config = req.body.config;
+  if (req.body.config !== undefined) {
+    if (!req.body.config || typeof req.body.config !== "object" || Array.isArray(req.body.config)) {
+      return res.status(400).json({ error: "Config must be an object" });
+    }
+    // Merge so a partial update (e.g. only the token) keeps the other fields
+    updates.config = { ...channel.config, ...req.body.config };
+  }
   if (req.body.enabled !== undefined) updates.active = req.body.enabled ? 1 : 0;
+
+  // Telegram only knows the token and secret we registered, so re-register when either changes
+  if (channel.type === "telegram" && updates.config &&
+      (updates.config.bot_token !== channel.config.bot_token || updates.config.webhook_secret !== channel.config.webhook_secret)) {
+    if (!updates.config.bot_token || !updates.config.webhook_secret) {
+      return res.status(400).json({ error: "Telegram requires bot_token and webhook_secret" });
+    }
+    const registerError = await registerTelegramWebhook(channel.id, updates.config);
+    if (registerError) {
+      return res.status(400).json({ error: registerError });
+    }
+  }
 
   const updated = NotificationChannel.update(req.params.id, updates);
   res.json({ channel: updated });

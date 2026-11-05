@@ -66,10 +66,9 @@ function dateToISO(date) {
   return date.toISOString().split("T")[0];
 }
 
+// Same ISO format as stored created_at so string comparison is correct; ms math keeps fractional days (1/24 = 1h)
 function daysAgo(days) {
-  const d = new Date();
-  d.setDate(d.getDate() - days);
-  return d.toISOString().replace("T", " ").substring(0, 19);
+  return new Date(Date.now() - days * 86400000).toISOString();
 }
 
 module.exports = {

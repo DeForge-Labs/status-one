@@ -7,7 +7,7 @@ import Sidebar from '@/components/dashboard/sidebar';
 import { PageLoader } from '@/components/ui/spinner';
 import { getSettings, updateSettings } from '@/lib/api';
 
-const APP_URL_INIT_KEY = 'status_one_app_url_initialized';
+const APP_URL_INIT_KEY = 'status_one_urls_initialized';
 
 /** Derive the public-facing origin from NEXT_PUBLIC_API_URL. */
 function resolveAppUrl() {
@@ -28,7 +28,7 @@ export default function DashboardLayout({ children }) {
     else if (!user) router.replace('/login');
   }, [user, loading, needsSetup, router]);
 
-  // One-time: seed app_url in settings after initial setup so the backend
+  // One-time: fill empty app_url / site_url after initial setup so the backend
   // knows its own public URL without manual configuration.
   useEffect(() => {
     if (!user) return;
@@ -40,7 +40,12 @@ export default function DashboardLayout({ children }) {
       try {
         const data = await getSettings();
         const current = data?.settings ?? data ?? {};
-        await updateSettings({ ...current, app_url: appUrl });
+        // site_url is the frontend origin; password reset links use it
+        await updateSettings({
+          ...current,
+          app_url: current.app_url || appUrl,
+          site_url: current.site_url || window.location.origin,
+        });
         localStorage.setItem(APP_URL_INIT_KEY, '1');
       } catch {
         // non-fatal — will retry on next load until it succeeds

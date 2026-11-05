@@ -43,10 +43,24 @@ function sanitizeString(str, maxLen = 255) {
   return str.trim().substring(0, maxLen);
 }
 
+function isPlainObject(v) {
+  return v !== null && typeof v === "object" && !Array.isArray(v);
+}
+
+// headers arrive as an object or as a JSON string of an object
+function isValidHeaders(headers) {
+  if (typeof headers !== "string") return isPlainObject(headers);
+  try {
+    return isPlainObject(JSON.parse(headers));
+  } catch {
+    return false;
+  }
+}
+
 function validateMonitorInput(body) {
   const errors = [];
 
-  if (!body.name || body.name.trim().length < 1) {
+  if (typeof body.name !== "string" || body.name.trim().length < 1) {
     errors.push("Name is required");
   }
 
@@ -79,8 +93,36 @@ function validateMonitorInput(body) {
     errors.push("Valid port (1-65535) is required for TCP monitors");
   }
 
-  if (body.interval_seconds && !isValidInterval(body.interval_seconds)) {
+  if (body.type === "ping") {
+    let host = body.hostname;
+    if (!host && body.url) {
+      try { host = new URL(body.url).hostname; } catch {}
+    }
+    // a leading "-" would be parsed as an option by the ping binary
+    if (String(host || "").trimStart().startsWith("-")) {
+      errors.push("Hostname must not start with '-'");
+    }
+  }
+
+  if (body.interval_seconds != null && !isValidInterval(body.interval_seconds)) {
     errors.push("Interval must be between 10 and 86400 seconds");
+  }
+
+  if (body.type === "push" && body.push_interval_seconds != null && !isValidInterval(body.push_interval_seconds)) {
+    errors.push("Push interval must be between 10 and 86400 seconds");
+  }
+
+  if (body.retries != null && !(Number.isInteger(body.retries) && body.retries >= 0 && body.retries <= 10)) {
+    errors.push("Retries must be an integer between 0 and 10");
+  }
+
+  if (body.headers != null && !isValidHeaders(body.headers)) {
+    errors.push("Headers must be a JSON object");
+  }
+
+  if (body.notification_channel_ids !== undefined &&
+      !(Array.isArray(body.notification_channel_ids) && body.notification_channel_ids.every((id) => typeof id === "string"))) {
+    errors.push("notification_channel_ids must be an array of ids");
   }
 
   if (body.type === "keyword" && !body.keyword) {

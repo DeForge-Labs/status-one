@@ -19,6 +19,7 @@ services:
       - SMTP_USER=${SMTP_USER:-}
       - SMTP_PASS=${SMTP_PASS:-}
       - SMTP_FROM=${SMTP_FROM:-"Status One <noreply@example.com>"}
+      - TRUST_PROXY=${TRUST_PROXY:-}
     networks:
       - status-one
 

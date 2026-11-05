@@ -10,10 +10,10 @@ async function checkKeyword(monitor) {
     metadata: {},
   };
 
-  try {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), monitor.timeout_ms || 10000);
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), monitor.timeout_ms || 10000);
 
+  try {
     const headers = typeof monitor.headers === "string"
       ? JSON.parse(monitor.headers)
       : (monitor.headers || {});
@@ -21,6 +21,9 @@ async function checkKeyword(monitor) {
     if (monitor.auth_method === "basic" && monitor.auth_user) {
       const credentials = Buffer.from(`${monitor.auth_user}:${monitor.auth_pass}`).toString("base64");
       headers["Authorization"] = `Basic ${credentials}`;
+    } else if (monitor.auth_method === "bearer" && monitor.auth_user) {
+      // the form stores the bearer token in auth_user
+      headers["Authorization"] = `Bearer ${monitor.auth_user}`;
     }
 
     const fetchOptions = {
@@ -38,15 +41,15 @@ async function checkKeyword(monitor) {
     }
 
     const response = await fetch(monitor.url, fetchOptions);
-    clearTimeout(timeout);
 
     result.response_time_ms = Date.now() - startTime;
     result.status_code = response.status;
 
-    const accepted = monitor.accepted_status_codes || `${monitor.expected_status || 200}`;
+    const accepted = monitor.accepted_status_codes || "200-299";
     if (!isStatusCodeAccepted(response.status, accepted)) {
       result.status = "down";
       result.error_message = `Expected status ${accepted}, got ${response.status}`;
+      response.body?.cancel().catch(() => {});
       return result;
     }
 
@@ -89,6 +92,8 @@ async function checkKeyword(monitor) {
     } else {
       result.error_message = err.message;
     }
+  } finally {
+    clearTimeout(timeout);
   }
 
   return result;

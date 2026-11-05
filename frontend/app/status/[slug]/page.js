@@ -30,9 +30,11 @@ export default function PublicStatusPage({ params }) {
   const [error, setError] = useState('');
 
   useEffect(() => {
+    let loaded = false;
     const fetch = async () => {
       try {
         const data = await getPublicStatusPage(slug);
+        loaded = true;
         setPage(data.statusPage);
         setMonitors(data.monitors || []);
         setIncidents(data.activeIncidents || []);
@@ -40,7 +42,8 @@ export default function PublicStatusPage({ params }) {
         setMaintenanceWindows(data.activeMaintenanceWindows || []);
         setOverallStatus(data.overallStatus || 'operational');
       } catch (err) {
-        setError('Status page not found');
+        // A failed background poll keeps showing the last good data instead of a 404
+        if (!loaded) setError('Status page not found');
       }
       setLoading(false);
     };
@@ -141,14 +144,14 @@ export default function PublicStatusPage({ params }) {
                 <p className="text-sm font-semibold text-blue-600 dark:text-blue-400">
                   {window.title || 'Scheduled Maintenance'}
                 </p>
-                <p className="text-sm text-blue-600/80 dark:text-blue-400/80 mt-0.5">
+                <div className="text-sm text-blue-600/80 dark:text-blue-400/80 mt-0.5">
                   <>The following monitors are currently undergoing scheduled maintenance:</>
                   <ol className="list-decimal list-inside text-sm text-blue-600/80 dark:text-blue-400/80">
                     {window.monitor_names.map(monitor_name => (
-                        <li>{monitor_name}</li>                    
+                        <li key={monitor_name}>{monitor_name}</li>
                     ))}
                   </ol>
-                </p>
+                </div>
                 {window.description && (
                   <p className="text-xs text-blue-500/80 dark:text-blue-300/80 mt-2">{window.description}</p>
                 )}

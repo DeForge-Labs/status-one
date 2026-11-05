@@ -1,5 +1,16 @@
 const { getDb } = require("../database/connection");
 const { generateId, nowISO } = require("../utils/helpers");
+const logger = require("../utils/logger");
+
+// One corrupt config must not break the channel list or alert delivery for every other channel
+function parseConfig(row) {
+  try {
+    return JSON.parse(row.config || "{}");
+  } catch {
+    logger.warn(`Notification channel ${row.id} has unreadable config; treating it as empty`);
+    return {};
+  }
+}
 
 const NotificationChannel = {
   create({ name, type, config, active, created_by }) {
@@ -17,7 +28,7 @@ const NotificationChannel = {
     const db = getDb();
     const row = db.prepare("SELECT * FROM notification_channels WHERE id = ?").get(id);
     if (row) {
-      row.config = JSON.parse(row.config || "{}");
+      row.config = parseConfig(row);
       row.active = !!row.active;
     }
     return row;
@@ -26,7 +37,7 @@ const NotificationChannel = {
   findAll() {
     const db = getDb();
     return db.prepare("SELECT * FROM notification_channels ORDER BY created_at DESC").all().map((row) => {
-      row.config = JSON.parse(row.config || "{}");
+      row.config = parseConfig(row);
       row.active = !!row.active;
       return row;
     });
@@ -41,7 +52,7 @@ const NotificationChannel = {
       if (allowed.includes(key) && val !== undefined) {
         sets.push(`${key} = ?`);
         if (key === "config") {
-          values.push(typeof val === "string" ? val : JSON.stringify(val));
+          values.push(JSON.stringify(val));
         } else if (key === "active") {
           values.push(val ? 1 : 0);
         } else {
@@ -62,5 +73,7 @@ const NotificationChannel = {
     db.prepare("DELETE FROM notification_channels WHERE id = ?").run(id);
   },
 };
+
+NotificationChannel.parseConfig = parseConfig;
 
 module.exports = NotificationChannel;

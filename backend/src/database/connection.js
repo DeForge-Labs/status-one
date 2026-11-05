@@ -22,6 +22,8 @@ function getDb() {
   db.run("PRAGMA foreign_keys = ON");
   db.run("PRAGMA cache_size = -20000"); // 20MB cache
   db.run("PRAGMA temp_store = MEMORY");
+  // Fold any WAL left by an unclean exit into the main file, so the .db on disk holds the data
+  db.run("PRAGMA wal_checkpoint(TRUNCATE)");
 
   return db;
 }

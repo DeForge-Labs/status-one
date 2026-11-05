@@ -1,7 +1,7 @@
 const { getDb } = require("./connection");
 const logger = require("../utils/logger");
 
-const SCHEMA_VERSION = 1;
+const SCHEMA_VERSION = 2;
 
 function runMigrations() {
   const db = getDb();
@@ -21,6 +21,23 @@ function runMigrations() {
     logger.info("Running migration v1: initial schema");
     migrate(db);
     db.run("INSERT INTO schema_version (version) VALUES (1)");
+  }
+
+  if (currentVersion < 2) {
+    logger.info("Running migration v2: api key permissions, maintenance scope/recurrence");
+    db.transaction(() => {
+      db.run(`ALTER TABLE api_keys ADD COLUMN permissions TEXT DEFAULT '["read"]'`);
+      // Keys created before permissions existed were unrestricted; keep them working
+      db.run(`UPDATE api_keys SET permissions = '["read","write"]'`);
+      db.run("ALTER TABLE maintenance_windows ADD COLUMN recurring_interval TEXT DEFAULT ''");
+      // The interval was never stored before, so old "recurring" windows never actually recurred
+      db.run("UPDATE maintenance_windows SET recurring = 0");
+      // Explicit flag: a window that loses its last monitor link must not silently become global
+      db.run("ALTER TABLE maintenance_windows ADD COLUMN is_global INTEGER DEFAULT 0");
+      db.run(`UPDATE maintenance_windows SET is_global = 1
+        WHERE NOT EXISTS (SELECT 1 FROM maintenance_monitors mm WHERE mm.maintenance_id = maintenance_windows.id)`);
+      db.run("INSERT INTO schema_version (version) VALUES (2)");
+    })();
   }
 
   logger.info(`Database schema at version ${SCHEMA_VERSION}`);
@@ -372,30 +389,7 @@ function resetDatabase() {
   db.run("PRAGMA foreign_keys = ON");
 
   runMigrations();
-  seedDefaults();
+  require("./seed").seedDefaults();
 }
 
-function seedDefaults() {
-  const db = getDb();
-
-  const defaults = {
-    app_name: "Status One",
-    app_url: "http://localhost:3000",
-    data_retention_days: "90",
-    stats_retention_days: "365",
-    default_check_interval: "60",
-    default_timeout: "10000",
-    default_retries: "3",
-    aggregation_cron: "0 * * * *",
-    retention_cron: "0 2 * * *",
-  };
-
-  const stmt = db.prepare(
-    "INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)"
-  );
-  for (const [key, value] of Object.entries(defaults)) {
-    stmt.run(key, value);
-  }
-}
-
-module.exports = { runMigrations, resetDatabase, seedDefaults };
+module.exports = { runMigrations, resetDatabase };

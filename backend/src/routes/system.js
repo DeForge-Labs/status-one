@@ -1,10 +1,11 @@
 const express = require("express");
 const router = express.Router();
 const path = require("path");
+const fs = require("fs");
 const { authMiddleware } = require("../middleware/auth");
-const { getDb, resetDb, closeDb } = require("../database/connection");
-const { runMigrations } = require("../database/migrations");
-const { seedDefaults } = require("../database/seed");
+const { getDb } = require("../database/connection");
+const { resetDatabase } = require("../database/migrations");
+const config = require("../config");
 const monitorEngine = require("../services/monitorEngine");
 const backupService = require("../services/backup");
 const logger = require("../utils/logger");
@@ -22,7 +23,13 @@ router.get("/health", (req, res) => {
 // GET /api/system/info - System information (auth required)
 router.get("/info", authMiddleware, (req, res) => {
   const db = getDb();
-  const dbSize = db.query("SELECT page_count * page_size as size FROM pragma_page_count(), pragma_page_size()").get();
+  const dbSize = db.query(
+    "SELECT page_count * page_size as size, freelist_count * page_size as free FROM pragma_page_count(), pragma_page_size(), pragma_freelist_count()"
+  ).get();
+  // Committed data can sit in the -wal file until a checkpoint, so report real disk usage too
+  const fileSize = (suffix) => {
+    try { return fs.statSync(config.dbPath + suffix).size; } catch { return 0; }
+  };
   const monitorCount = db.query("SELECT COUNT(*) as count FROM monitors").get();
   const checkCount = db.query("SELECT COUNT(*) as count FROM monitor_checks").get();
   const userCount = db.query("SELECT COUNT(*) as count FROM users").get();
@@ -33,6 +40,8 @@ router.get("/info", authMiddleware, (req, res) => {
     uptime: process.uptime(),
     database: {
       size_bytes: dbSize?.size || 0,
+      free_bytes: dbSize?.free || 0,
+      disk_bytes: fileSize("") + fileSize("-wal"),
       monitors: monitorCount?.count || 0,
       checks: checkCount?.count || 0,
       users: userCount?.count || 0,
@@ -56,21 +65,18 @@ router.post("/factory-reset", authMiddleware, async (req, res) => {
 
   logger.warn("Factory reset initiated by user:", req.user.email);
 
+  // Stop checks so nothing writes into tables while they are dropped
+  monitorEngine.stopAll();
+
   try {
-    // Stop all monitors
-    monitorEngine.stopAll();
-
-    // Reset database
-    resetDb();
-
-    // Re-run migrations and seed
-    runMigrations();
-    seedDefaults();
+    resetDatabase();
+    compactDb();
 
     logger.warn("Factory reset completed");
-    res.json({ message: "Factory reset completed. All data has been erased. Please restart the application." });
+    res.json({ message: "Factory reset completed. All data has been erased." });
   } catch (err) {
     logger.error("Factory reset failed:", err);
+    monitorEngine.start();
     res.status(500).json({ error: "Factory reset failed: " + err.message });
   }
 });
@@ -78,8 +84,7 @@ router.post("/factory-reset", authMiddleware, async (req, res) => {
 // POST /api/system/backup - Trigger a manual database backup
 router.post("/backup", authMiddleware, (req, res) => {
   try {
-    const backupPath = backupService.runBackup();
-    const fs = require("fs");
+    const backupPath = backupService.runBackup("manual");
     const stats = fs.statSync(backupPath);
     res.json({
       message: "Backup created successfully",
@@ -112,7 +117,6 @@ router.get("/backups", authMiddleware, (req, res) => {
 
 // GET /api/system/backups/:filename - Download a backup file
 router.get("/backups/:filename", authMiddleware, (req, res) => {
-  const fs = require("fs");
   const filename = path.basename(req.params.filename); // prevent path traversal
 
   if (!filename.endsWith(".db")) {
@@ -135,16 +139,17 @@ router.get("/backups/:filename", authMiddleware, (req, res) => {
 
 // POST /api/system/purge-checks - Purge old check data
 router.post("/purge-checks", authMiddleware, (req, res) => {
-  const { days } = req.body;
-  const retentionDays = parseInt(days) || 30;
+  const retentionDays = parseInt(req.body?.days, 10);
 
-  if (retentionDays < 1) {
-    return res.status(400).json({ error: "Days must be at least 1" });
+  // Hourly aggregation re-reads yesterday's raw checks, so keep at least 2 days to not corrupt daily stats
+  if (!Number.isFinite(retentionDays) || retentionDays < 2) {
+    return res.status(400).json({ error: "Days must be a number of at least 2" });
   }
 
   const db = getDb();
   const cutoff = new Date(Date.now() - retentionDays * 86400000).toISOString();
   const result = db.run("DELETE FROM monitor_checks WHERE created_at < ?", [cutoff]);
+  if (result.changes > 0) compactDb();
 
   logger.info(`Purged checks older than ${retentionDays} days. Rows deleted: ${result.changes}`);
   res.json({
@@ -152,5 +157,12 @@ router.post("/purge-checks", authMiddleware, (req, res) => {
     deleted: result.changes,
   });
 });
+
+// DELETE leaves free pages behind; VACUUM + checkpoint actually shrinks the files on disk
+function compactDb() {
+  const db = getDb();
+  db.run("VACUUM");
+  db.run("PRAGMA wal_checkpoint(TRUNCATE)");
+}
 
 module.exports = router;

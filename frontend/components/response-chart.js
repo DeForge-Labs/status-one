@@ -3,7 +3,15 @@
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip } from 'recharts';
 import { useTheme } from '@/contexts/theme';
 
-export default function ResponseTimeChart({ data = [], height = 300 }) {
+// Backend buckets are UTC "YYYY-MM-DD HH:MM:SS" (no zone): minute <=1h, hour <=7d, day beyond.
+// Show only the time within a day, date+time for hourly buckets over several days, date only for daily buckets.
+const labelOptions = {
+  '1h': { hour: '2-digit', minute: '2-digit' },
+  '24h': { hour: '2-digit', minute: '2-digit' },
+  '7d': { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' },
+};
+
+export default function ResponseTimeChart({ data = [], height = 300, period = '24h' }) {
   const { resolved } = useTheme();
   const isDark = resolved === 'dark';
 
@@ -17,7 +25,7 @@ export default function ResponseTimeChart({ data = [], height = 300 }) {
 
   const formatted = data.map(d => ({
     ...d,
-    time: d.bucket ? new Date(d.bucket.replace(' ', 'T')).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '',
+    time: d.bucket ? new Date(d.bucket.replace(' ', 'T') + 'Z').toLocaleString([], labelOptions[period] || { month: 'short', day: 'numeric' }) : '',
     avg: Math.round(d.avg_rt || 0),
     min: Math.round(d.min_rt || 0),
     max: Math.round(d.max_rt || 0),

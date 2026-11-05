@@ -5,7 +5,7 @@ const Monitor = require("../models/monitor");
 const MonitorCheck = require("../models/monitorCheck");
 const Incident = require("../models/incident");
 const { authMiddleware } = require("../middleware/auth");
-const { daysAgo, dateToISO } = require("../utils/helpers");
+const { dateToISO } = require("../utils/helpers");
 
 // GET /api/analytics/overview - Dashboard overview
 router.get("/overview", authMiddleware, (req, res) => {
@@ -57,30 +57,7 @@ router.get("/summary", authMiddleware, (req, res) => {
   const monitorsByStatus = Monitor.countByStatus();
   const activeIncidents = Incident.countActive();
 
-  // Calculate global uptime for last 24h and 30d
-  const monitors = Monitor.findAll({});
-  let totalChecks24h = 0;
-  let upChecks24h = 0;
-  let totalChecks30d = 0;
-  let upChecks30d = 0;
-
-  for (const m of monitors) {
-    const stats24h = MonitorCheck.getStatsByRange(m.id, daysAgo(1));
-    const stats30d = MonitorCheck.getStatsByRange(m.id, daysAgo(30));
-
-    totalChecks24h += stats24h.total || 0;
-    upChecks24h += stats24h.up || 0;
-    totalChecks30d += stats30d.total || 0;
-    upChecks30d += stats30d.up || 0;
-  }
-
-  res.json({
-    totalMonitors,
-    monitorsByStatus,
-    activeIncidents,
-    uptime24h: totalChecks24h > 0 ? parseFloat(((upChecks24h / totalChecks24h) * 100).toFixed(2)) : 100,
-    uptime30d: totalChecks30d > 0 ? parseFloat(((upChecks30d / totalChecks30d) * 100).toFixed(2)) : 100,
-  });
+  res.json({ totalMonitors, monitorsByStatus, activeIncidents, ...Analytics.getGlobalUptime() });
 });
 
 module.exports = router;

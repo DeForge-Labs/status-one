@@ -49,6 +49,7 @@ export default function IncidentDetailPage({ params }) {
   };
 
   const handleResolve = async () => {
+    setError('');
     try {
       await resolveIncident(id, 'Incident resolved.');
       refresh();
@@ -58,9 +59,11 @@ export default function IncidentDetailPage({ params }) {
   };
 
   const handleDelete = async () => {
+    setError('');
     setDeleting(true);
-    try { await deleteIncident(id); router.push('/incidents'); } catch {}
+    try { await deleteIncident(id); router.push('/incidents'); } catch (err) { setError(err.message); }
     setDeleting(false);
+    setShowDelete(false);
   };
 
   return (
@@ -94,6 +97,8 @@ export default function IncidentDetailPage({ params }) {
           </Button>
         </div>
       </div>
+
+      {error && <div className="p-3 rounded-lg bg-red-500/10 text-red-500 text-sm">{error}</div>}
 
       {/* Timeline */}
       <Card>
@@ -129,7 +134,6 @@ export default function IncidentDetailPage({ params }) {
       {incident.status !== 'resolved' && (
         <Card>
           <h3 className="text-base font-semibold text-[var(--color-text)] mb-4">Add Update</h3>
-          {error && <div className="mb-3 p-3 rounded-lg bg-red-500/10 text-red-500 text-sm">{error}</div>}
           <form onSubmit={handleAddUpdate} className="space-y-4">
             <Select label="Status" value={updateForm.status || incident.status} onChange={e => setUpdateForm(prev => ({ ...prev, status: e.target.value }))}>
               <option value="investigating">Investigating</option>

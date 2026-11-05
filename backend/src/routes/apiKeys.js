@@ -12,9 +12,9 @@ router.get("/", authMiddleware, (req, res) => {
       id: k.id,
       name: k.name,
       prefix: k.prefix,
-      permissions: k.permissions ? JSON.parse(k.permissions) : [],
+      permissions: k.permissions,
       expires_at: k.expires_at,
-      last_used_at: k.last_used_at,
+      last_used_at: k.last_used,
       created_at: k.created_at,
     })),
   });
@@ -24,22 +24,34 @@ router.get("/", authMiddleware, (req, res) => {
 router.post("/", authMiddleware, (req, res) => {
   const { name, permissions, expires_at } = req.body;
 
-  if (!name || name.trim().length < 1) {
+  if (typeof name !== "string" || name.trim().length < 1) {
     return res.status(400).json({ error: "Name is required" });
   }
 
   const validPermissions = ["read", "write", "monitors", "incidents", "status_pages"];
   const perms = permissions || ["read"];
+  if (!Array.isArray(perms)) {
+    return res.status(400).json({ error: "permissions must be an array" });
+  }
   for (const p of perms) {
     if (!validPermissions.includes(p)) {
       return res.status(400).json({ error: `Invalid permission: ${p}. Valid: ${validPermissions.join(", ")}` });
     }
   }
 
+  let expiresAt = null;
+  if (expires_at) {
+    const d = new Date(expires_at);
+    if (isNaN(d) || d <= new Date()) {
+      return res.status(400).json({ error: "expires_at must be a valid future date" });
+    }
+    expiresAt = d.toISOString();
+  }
+
   const result = ApiKey.create({
     name: sanitizeString(name, 200),
-    permissions: JSON.stringify(perms),
-    expires_at: expires_at || null,
+    permissions: perms,
+    expires_at: expiresAt,
     created_by: req.user.id,
   });
 
@@ -48,9 +60,9 @@ router.post("/", authMiddleware, (req, res) => {
     apiKey: {
       id: result.id,
       name: result.name,
-      key: result.rawKey,
+      key: result.key,
       prefix: result.prefix,
-      permissions: perms,
+      permissions: result.permissions,
       expires_at: result.expires_at,
       created_at: result.created_at,
     },

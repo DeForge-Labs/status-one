@@ -27,20 +27,21 @@ function getBackupFiles() {
     .sort((a, b) => a.mtime - b.mtime); // oldest first
 }
 
-function runBackup() {
+// Manual and scheduled backups rotate separately so manual ones can't evict the automatic restore points
+function runBackup(prefix = "backup") {
   logger.info("Running database backup...");
   try {
     ensureBackupDir();
 
     const db = getDb();
     const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
-    const backupPath = path.join(backupDir, `backup-${timestamp}.db`);
+    const backupPath = path.join(backupDir, `${prefix}-${timestamp}.db`);
 
-    db.run(`VACUUM INTO '${backupPath}'`);
+    db.run("VACUUM INTO ?", [backupPath]);
     logger.info(`Backup created: ${backupPath}`);
 
     // Rotate: delete oldest backups until we are within the limit
-    const files = getBackupFiles();
+    const files = getBackupFiles().filter((f) => f.name.startsWith(`${prefix}-`));
     while (files.length > MAX_BACKUPS) {
       const oldest = files.shift();
       fs.unlinkSync(oldest.path);

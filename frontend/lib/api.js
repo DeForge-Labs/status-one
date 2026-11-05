@@ -25,7 +25,8 @@ async function apiRequest(path, options = {}) {
     headers,
   });
 
-  if (response.status === 401) {
+  // A 401 without a session (e.g. wrong password on /login) is a normal error, not an expired session
+  if (response.status === 401 && token) {
     if (typeof window !== 'undefined') {
       localStorage.removeItem('status_one_token');
       localStorage.removeItem('status_one_user');
@@ -182,14 +183,21 @@ export const removeMonitorFromStatusPage = (id, monitorId) => apiRequest(`/statu
 export const addStatusPageMessage = (id, data) => apiRequest(`/status-pages/${id}/messages`, { method: 'POST', body: JSON.stringify(data) });
 
 // Database
-export const getDatabaseBackup = async () => {
+export const getBackups = () => apiRequest('/system/backups');
+
+// Downloads need the Bearer header, so a plain <a href> can't be used; fetch as a blob and save it
+export const downloadBackup = async (filename) => {
   const token = typeof window !== 'undefined' ? localStorage.getItem('status_one_token') : null;
-  const res = await fetch(`${API_BASE}/system/backup`, {
-    method: 'POST',
+  const res = await fetch(`${API_BASE}/system/backups/${encodeURIComponent(filename)}`, {
     headers: { ...(token ? { 'Authorization': `Bearer ${token}` } : {}) },
   });
-  if (!res.ok) throw new ApiError('Backup failed', res.status);
-  return res.blob();
+  if (!res.ok) throw new ApiError('Backup download failed', res.status);
+  const url = URL.createObjectURL(await res.blob());
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
 };
 export const purgeOldData = (days) => apiRequest('/system/purge-checks', { method: 'POST', body: JSON.stringify({ days }) });
 

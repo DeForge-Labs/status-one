@@ -9,7 +9,7 @@ const failureCounters = new Map();
 
 async function evaluate(monitor, checkResult) {
   try {
-    const retries = monitor.retries || 3;
+    const retries = monitor.retries ?? 3;
     const currentCount = failureCounters.get(monitor.id) || 0;
 
     if (checkResult.status === "down") {
@@ -44,24 +44,22 @@ async function evaluate(monitor, checkResult) {
       }
     } else {
       // Monitor is up or degraded
-      if (currentCount > 0) {
-        failureCounters.set(monitor.id, 0);
+      failureCounters.set(monitor.id, 0);
 
-        // Check if there's an active incident to resolve
-        const activeIncident = Incident.findActiveByMonitorId(monitor.id);
-        if (activeIncident && activeIncident.type === "auto") {
-          Incident.addUpdate({
-            incident_id: activeIncident.id,
-            status: "resolved",
-            message: `${monitor.name} is back online. Response time: ${checkResult.response_time_ms}ms`,
-          });
+      // Don't gate on the counter: it is in-memory, so after a restart an open auto incident would never resolve
+      const activeIncident = Incident.findActiveByMonitorId(monitor.id);
+      if (activeIncident && activeIncident.type === "auto") {
+        Incident.addUpdate({
+          incident_id: activeIncident.id,
+          status: "resolved",
+          message: `${monitor.name} is back online. Response time: ${checkResult.response_time_ms}ms`,
+        });
 
-          Incident.resolve(activeIncident.id);
-          logger.info(`Incident ${activeIncident.id} auto-resolved for monitor ${monitor.name}`);
+        Incident.resolve(activeIncident.id);
+        logger.info(`Incident ${activeIncident.id} auto-resolved for monitor ${monitor.name}`);
 
-          // Send recovery notification
-          await notifier.sendMonitorUp(monitor, activeIncident, checkResult);
-        }
+        // Send recovery notification
+        await notifier.sendMonitorUp(monitor, activeIncident, checkResult);
       }
 
       // Notify on degraded state change (optional)

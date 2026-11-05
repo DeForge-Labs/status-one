@@ -15,13 +15,14 @@ function formatMessage(payload) {
 
   const icon = emoji[payload.type] || "\u{2139}\u{FE0F}";
 
+  // Plain text on purpose: monitor names, URLs and errors are user data and break Telegram's Markdown/HTML parsing
   if (payload.type === "test") {
-    return `${icon} *Test Notification*\n\n${payload.message}`;
+    return `${icon} Test Notification\n\n${payload.message}`;
   }
 
   if (payload.type === "monitor_down") {
-    let msg = `${icon} *Monitor Down*\n\n`;
-    msg += `*${payload.monitor.name}*\n`;
+    let msg = `${icon} Monitor Down\n\n`;
+    msg += `${payload.monitor.name}\n`;
     msg += `Type: ${payload.monitor.type}\n`;
     if (payload.monitor.url) msg += `URL: ${payload.monitor.url}\n`;
     msg += `\nError: ${payload.check.error_message || "Unknown error"}\n`;
@@ -31,8 +32,8 @@ function formatMessage(payload) {
   }
 
   if (payload.type === "monitor_up") {
-    let msg = `${icon} *Monitor Recovered*\n\n`;
-    msg += `*${payload.monitor.name}*\n`;
+    let msg = `${icon} Monitor Recovered\n\n`;
+    msg += `${payload.monitor.name}\n`;
     msg += `Type: ${payload.monitor.type}\n`;
     if (payload.monitor.url) msg += `URL: ${payload.monitor.url}\n`;
     msg += `Response Time: ${payload.check.response_time_ms}ms\n`;
@@ -41,17 +42,17 @@ function formatMessage(payload) {
   }
 
   if (payload.type === "monitor_degraded") {
-    let msg = `${icon} *Monitor Degraded*\n\n`;
-    msg += `*${payload.monitor.name}*\n`;
+    let msg = `${icon} Monitor Degraded\n\n`;
+    msg += `${payload.monitor.name}\n`;
     msg += `Response Time: ${payload.check.response_time_ms}ms\n`;
     msg += `\nTime: ${payload.timestamp}`;
     return msg;
   }
 
   if (payload.type === "incident_update") {
-    let msg = `${icon} *Incident Update*\n\n`;
+    let msg = `${icon} Incident Update\n\n`;
     if (payload.incident) {
-      msg += `*${payload.incident.title}*\n`;
+      msg += `${payload.incident.title}\n`;
       msg += `Status: ${payload.update.status}\n\n`;
       msg += `${payload.update.message}\n`;
     }
@@ -125,11 +126,11 @@ async function sendRawMessage(botToken, chatId, text) {
   const response = await fetch(url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ chat_id: chatId, text, parse_mode: "Markdown", disable_web_page_preview: true }),
+    body: JSON.stringify({ chat_id: chatId, text, disable_web_page_preview: true }),
   });
   if (!response.ok) {
     const body = await response.text();
-    logger.warn(`Telegram sendMessage failed (${response.status}): ${body}`);
+    throw new Error(`Telegram sendMessage failed (${response.status}): ${body}`);
   }
 }
 
@@ -155,8 +156,10 @@ async function sendMessage(config, payload, channelId) {
     subscribers.map((sub) => sendRawMessage(bot_token, sub.chat_id, text))
   );
 
-  const failed = results.filter((r) => r.status === "rejected").length;
-  logger.debug(`Telegram notification sent to ${subscribers.length - failed}/${subscribers.length} subscribers`);
+  // Only a total failure is an error (e.g. a bad bot token); one blocked subscriber should not fail the send
+  const failures = results.filter((r) => r.status === "rejected");
+  if (failures.length === subscribers.length) throw failures[0].reason;
+  logger.debug(`Telegram notification sent to ${subscribers.length - failures.length}/${subscribers.length} subscribers`);
 }
 
 // --- Webhook registration ---

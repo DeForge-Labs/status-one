@@ -19,6 +19,7 @@ export default function ApiKeysPage() {
   const [form, setForm] = useState({ name: '', expires_in_days: 0 });
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState('');
+  const [pageError, setPageError] = useState('');
   const [deleteId, setDeleteId] = useState(null);
   const [deleting, setDeleting] = useState(false);
   const [newKey, setNewKey] = useState(null);
@@ -27,8 +28,10 @@ export default function ApiKeysPage() {
   const fetchKeys = async () => {
     try {
       const data = await getApiKeys();
-      setKeys(data.api_keys || data.keys || []);
-    } catch {}
+      setKeys(data.apiKeys || []);
+    } catch (err) {
+      setPageError(err.message);
+    }
     setLoading(false);
   };
 
@@ -41,9 +44,11 @@ export default function ApiKeysPage() {
     try {
       const data = await createApiKey({
         name: form.name,
-        expires_in_days: form.expires_in_days > 0 ? form.expires_in_days : undefined,
+        expires_at: form.expires_in_days > 0
+          ? new Date(Date.now() + form.expires_in_days * 86400000).toISOString()
+          : undefined,
       });
-      setNewKey(data.api_key || data.key);
+      setNewKey(data.apiKey.key);
       setForm({ name: '', expires_in_days: 0 });
       fetchKeys();
     } catch (err) {
@@ -55,7 +60,8 @@ export default function ApiKeysPage() {
   const handleDelete = async () => {
     if (!deleteId) return;
     setDeleting(true);
-    try { await deleteApiKey(deleteId); fetchKeys(); } catch {}
+    setPageError('');
+    try { await deleteApiKey(deleteId); fetchKeys(); } catch (err) { setPageError(err.message); }
     setDeleting(false);
     setDeleteId(null);
   };
@@ -79,6 +85,8 @@ export default function ApiKeysPage() {
         </div>
         <Button onClick={() => { setShowCreate(true); setNewKey(null); }}><Plus size={16} /> Create Key</Button>
       </div>
+
+      {pageError && <div className="p-3 rounded-lg bg-red-500/10 text-red-500 text-sm">{pageError}</div>}
 
       {keys.length === 0 ? (
         <EmptyState icon={Key} title="No API keys" description="Create an API key to access the API programmatically" />

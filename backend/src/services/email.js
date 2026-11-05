@@ -118,7 +118,7 @@ async function sendPasswordReset(email, resetToken, appUrl) {
     throw new Error("SMTP not configured");
   }
 
-  const resetUrl = `${appUrl}/reset-password?token=${resetToken}`;
+  const resetUrl = `${appUrl.replace(/\/+$/, "")}/reset-password?token=${resetToken}`;
 
   await transporter.sendMail({
     from: config.smtp.from,

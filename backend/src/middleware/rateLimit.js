@@ -1,9 +1,10 @@
 const logger = require("../utils/logger");
 
 // Simple in-memory sliding window rate limiter
-const store = new Map();
+function createRateLimiter({ windowMs = 60000, max: maxRequests = 120, message = "Too many requests" } = {}) {
+  // Per-limiter store: a shared one would count a request once for every limiter it passes through
+  const store = new Map();
 
-function createRateLimiter({ windowMs = 60000, maxRequests = 120 } = {}) {
   // Cleanup old entries periodically
   setInterval(() => {
     const now = Date.now();
@@ -14,7 +15,7 @@ function createRateLimiter({ windowMs = 60000, maxRequests = 120 } = {}) {
         store.delete(key);
       }
     }
-  }, windowMs);
+  }, windowMs).unref();
 
   return function rateLimit(req, res, next) {
     // Use IP as key, fallback to a default
@@ -32,7 +33,7 @@ function createRateLimiter({ windowMs = 60000, maxRequests = 120 } = {}) {
     if (data.timestamps.length >= maxRequests) {
       logger.warn(`Rate limit exceeded for ${key}`);
       return res.status(429).json({
-        error: "Too many requests",
+        error: message,
         retryAfter: Math.ceil(windowMs / 1000),
       });
     }

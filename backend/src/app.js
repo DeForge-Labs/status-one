@@ -25,6 +25,12 @@ const telegramRoutes = require("./routes/telegram");
 function createApp() {
   const app = express();
 
+  // Opt-in: trusting X-Forwarded-For without a proxy lets clients spoof their IP
+  if (process.env.TRUST_PROXY) {
+    const v = process.env.TRUST_PROXY;
+    app.set("trust proxy", v === "true" ? true : v === "false" ? false : /^\d+$/.test(v) ? parseInt(v, 10) : v);
+  }
+
   // --- Global Middleware ---
 
   // CORS
@@ -69,13 +75,6 @@ function createApp() {
 
   // Auth routes with stricter rate limit
   app.use("/api/auth", authLimiter, authRoutes);
-
-  // Heartbeat push endpoint (auth via push token in URL)
-  app.post("/api/heartbeat/:id/:pushToken", (req, res, next) => {
-    const monitorRouteHandler = require("./routes/monitors");
-    // Forward to monitors heartbeat handler - handled within monitors route
-    next();
-  });
 
   // Protected API routes (JWT or API key)
   app.use("/api/users", userRoutes);

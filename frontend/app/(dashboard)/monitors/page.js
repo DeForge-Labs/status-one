@@ -24,6 +24,7 @@ export default function MonitorsPage() {
   const [badgeMonitor, setBadgeMonitor] = useState(null);
   const [copiedKey, setCopiedKey] = useState(null);
   const [badgeStyle, setBadgeStyle] = useState('flat');
+  const [error, setError] = useState('');
 
   const copySnippet = (key, text) => {
     navigator.clipboard.writeText(text);
@@ -48,17 +49,21 @@ export default function MonitorsPage() {
   const handleDelete = async () => {
     if (!deleteId) return;
     setDeleting(true);
-    try { await deleteMonitor(deleteId); refresh(); } catch {}
+    setError('');
+    try { await deleteMonitor(deleteId); refresh(); } catch (err) { setError(err.message); }
     setDeleting(false);
     setDeleteId(null);
   };
 
   const handleToggle = async (monitor) => {
+    setError('');
     try {
       if (monitor.active) await pauseMonitor(monitor.id);
       else await resumeMonitor(monitor.id);
       refresh();
-    } catch {}
+    } catch (err) {
+      setError(err.message);
+    }
   };
 
   return (
@@ -72,6 +77,8 @@ export default function MonitorsPage() {
           <Button><Plus size={16} /> Add Monitor</Button>
         </Link>
       </div>
+
+      {error && <div className="p-3 rounded-lg bg-red-500/10 text-red-500 text-sm">{error}</div>}
 
       {/* Filters */}
       <div className="flex flex-wrap gap-3">
@@ -123,7 +130,9 @@ export default function MonitorsPage() {
         />
       ) : (
         <div className="space-y-2">
-          {filtered.map((monitor) => (
+          {filtered.map((monitor) => {
+            const uptime24h = monitor.is_paused || monitor.current_status === 'paused' || monitor.current_status === 'maintenance' ? null : monitor.uptime?.['24h'];
+            return (
             <Card key={monitor.id} className="p-0 overflow-hidden hover:border-[var(--color-text-tertiary)] transition-colors">
               <div className="flex items-center px-5 py-4">
                 <Link href={`/monitors/${monitor.id}`} className="flex items-center gap-4 min-w-0 flex-1">
@@ -161,10 +170,8 @@ export default function MonitorsPage() {
                     </div>
                   )}
                   <div className="hidden sm:block text-right min-w-[80px]">
-                    <p className={clsx('text-sm font-medium', uptimeColor(monitor.uptime?.['24h']))}>
-                      {monitor.is_paused || monitor.current_status === 'paused' || monitor.current_status === 'maintenance'
-                        ? '—'
-                        : monitor.uptime?.['24h'] != null ? `${monitor.uptime['24h'].toFixed(1)}%` : '—'}
+                    <p className={clsx('text-sm font-medium', uptime24h == null ? 'text-[var(--color-text-tertiary)]' : uptimeColor(uptime24h))}>
+                      {uptime24h != null ? `${uptime24h.toFixed(1)}%` : '—'}
                     </p>
                     <p className="text-[10px] text-[var(--color-text-tertiary)]">24h</p>
                   </div>
@@ -192,7 +199,8 @@ export default function MonitorsPage() {
                 </div>
               </div>
             </Card>
-          ))}
+            );
+          })}
         </div>
       )}
 

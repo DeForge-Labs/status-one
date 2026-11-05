@@ -45,6 +45,7 @@ export default function NotificationsPage() {
   const [deleting, setDeleting] = useState(false);
   const [testing, setTesting] = useState(null);
   const [testResult, setTestResult] = useState({});
+  const [actionError, setActionError] = useState('');
 
   const fetchChannels = async () => {
     try {
@@ -74,7 +75,8 @@ export default function NotificationsPage() {
   const handleDelete = async () => {
     if (!deleteId) return;
     setDeleting(true);
-    try { await deleteNotificationChannel(deleteId); fetchChannels(); } catch {}
+    setActionError('');
+    try { await deleteNotificationChannel(deleteId); fetchChannels(); } catch (err) { setActionError(err.message); }
     setDeleting(false);
     setDeleteId(null);
   };
@@ -91,11 +93,15 @@ export default function NotificationsPage() {
     setTesting(null);
   };
 
+  // The API reads `enabled` on PUT and returns it as `active`
   const handleToggle = async (channel) => {
+    setActionError('');
     try {
-      await updateNotificationChannel(channel.id, { enabled: !channel.enabled });
+      await updateNotificationChannel(channel.id, { enabled: !channel.active });
       fetchChannels();
-    } catch {}
+    } catch (err) {
+      setActionError(err.message);
+    }
   };
 
   if (loading) return <PageLoader />;
@@ -114,11 +120,12 @@ export default function NotificationsPage() {
         <EmptyState icon={Bell} title="No notification channels" description="Add a channel to receive alerts when monitors go down" action={{ label: 'Add Channel', onClick: () => setShowCreate(true) }} />
       ) : (
         <div className="space-y-2">
+          {actionError && <div className="p-3 rounded-lg bg-red-500/10 text-red-500 text-sm">{actionError}</div>}
           {channels.map(ch => (
             <Card key={ch.id}>
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3 min-w-0">
-                  <div className={`w-2 h-2 rounded-full flex-shrink-0 ${ch.enabled ? 'bg-green-500' : 'bg-gray-400'}`} />
+                  <div className={`w-2 h-2 rounded-full flex-shrink-0 ${ch.active ? 'bg-green-500' : 'bg-gray-400'}`} />
                   <div className="min-w-0">
                     <p className="text-sm font-medium text-[var(--color-text)] truncate">{ch.name}</p>
                     <p className="text-xs text-[var(--color-text-tertiary)]">{channelTypes.find(t => t.value === ch.type)?.label || ch.type}</p>
@@ -133,8 +140,8 @@ export default function NotificationsPage() {
                   <Button variant="ghost" size="sm" onClick={() => handleTest(ch.id)} disabled={testing === ch.id}>
                     <Send size={13} /> {testing === ch.id ? '...' : 'Test'}
                   </Button>
-                  <button onClick={() => handleToggle(ch)} className={`p-1.5 rounded-lg transition-colors cursor-pointer ${ch.enabled ? 'text-green-500 hover:bg-green-500/10' : 'text-[var(--color-text-tertiary)] hover:bg-[var(--color-bg-tertiary)]'}`}>
-                    {ch.enabled ? <Check size={14} /> : <X size={14} />}
+                  <button onClick={() => handleToggle(ch)} className={`p-1.5 rounded-lg transition-colors cursor-pointer ${ch.active ? 'text-green-500 hover:bg-green-500/10' : 'text-[var(--color-text-tertiary)] hover:bg-[var(--color-bg-tertiary)]'}`}>
+                    {ch.active ? <Check size={14} /> : <X size={14} />}
                   </button>
                   <button onClick={() => setDeleteId(ch.id)} className="p-1.5 rounded-lg hover:bg-red-500/10 text-[var(--color-text-secondary)] hover:text-red-500 transition-colors cursor-pointer">
                     <Trash2 size={14} />

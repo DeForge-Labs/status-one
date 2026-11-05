@@ -9,10 +9,21 @@ const { paginationMeta, daysAgo } = require("../utils/helpers");
 const monitorEngine = require("../services/monitorEngine");
 const heartbeat = require("../services/heartbeat");
 const Maintenance = require("../models/maintenance");
+const incidentManager = require("../services/incidentManager");
+const { getDb } = require("../database/connection");
+
+// Shape validation first, then check that the linked channel ids exist (avoids an FK 500)
+function inputErrors(data) {
+  const errors = validateMonitorInput(data);
+  if (errors.length || !Array.isArray(data.notification_channel_ids)) return errors;
+  const missing = Monitor.findUnknownChannelIds(data.notification_channel_ids);
+  return missing.length ? [`Unknown notification channel(s): ${missing.join(", ")}`] : [];
+}
 
 // GET /api/monitors - List all monitors
 router.get("/", authMiddleware, (req, res) => {
   const monitors = Monitor.findAll();
+  const uptime24h = MonitorCheck.getUptimeByMonitor(daysAgo(1));
 
   // Enrich with latest status and tags
   const enriched = monitors.map((m) => {
@@ -33,6 +44,7 @@ router.get("/", authMiddleware, (req, res) => {
       in_maintenance,
       tags,
       notification_channel_ids: notificationIds,
+      uptime: { "24h": uptime24h[m.id] ?? null },
     };
   });
 
@@ -83,7 +95,7 @@ router.get("/:id", authMiddleware, (req, res) => {
 
 // POST /api/monitors - Create monitor
 router.post("/", authMiddleware, (req, res) => {
-  const errors = validateMonitorInput(req.body);
+  const errors = inputErrors(req.body);
   if (errors.length > 0) {
     return res.status(400).json({ errors });
   }
@@ -95,14 +107,14 @@ router.post("/", authMiddleware, (req, res) => {
     data.push_token = generatePushToken();
   }
 
-  const monitor = Monitor.create(data);
-
-  // Link notification channels if provided
-  if (req.body.notification_channel_ids && Array.isArray(req.body.notification_channel_ids)) {
-    for (const channelId of req.body.notification_channel_ids) {
-      Monitor.addNotificationChannel(monitor.id, channelId);
+  // Monitor and its channel links are written together or not at all
+  const monitor = getDb().transaction(() => {
+    const created = Monitor.create(data);
+    if (req.body.notification_channel_ids) {
+      Monitor.setNotificationChannels(created.id, req.body.notification_channel_ids);
     }
-  }
+    return created;
+  })();
 
   // Start monitoring
   monitorEngine.addMonitor(monitor.id);
@@ -117,29 +129,25 @@ router.put("/:id", authMiddleware, (req, res) => {
     return res.status(404).json({ error: "Monitor not found" });
   }
 
-  // Only validate fields that are being updated
-  if (req.body.name !== undefined || req.body.type !== undefined) {
-    const checkData = { ...monitor, ...req.body };
-    const errors = validateMonitorInput(checkData);
-    if (errors.length > 0) {
-      return res.status(400).json({ errors });
-    }
+  // Validate the merged result, exactly like POST; push_token is server-generated, never client-set
+  const body = { ...req.body };
+  delete body.push_token;
+  const merged = { ...monitor, ...body };
+  const errors = inputErrors(merged);
+  if (errors.length > 0) {
+    return res.status(400).json({ errors });
+  }
+  if (merged.type === "push" && !monitor.push_token) {
+    body.push_token = generatePushToken();
   }
 
-  const updated = Monitor.update(req.params.id, req.body);
-
-  // Update notification channel links if provided
-  if (req.body.notification_channel_ids && Array.isArray(req.body.notification_channel_ids)) {
-    // Remove existing links
-    const existing = Monitor.getLinkedNotificationIds(req.params.id);
-    for (const id of existing) {
-      Monitor.removeNotificationChannel(req.params.id, id);
+  const updated = getDb().transaction(() => {
+    const row = Monitor.update(req.params.id, body);
+    if (body.notification_channel_ids) {
+      Monitor.setNotificationChannels(req.params.id, body.notification_channel_ids);
     }
-    // Add new links
-    for (const channelId of req.body.notification_channel_ids) {
-      Monitor.addNotificationChannel(req.params.id, channelId);
-    }
-  }
+    return row;
+  })();
 
   // Restart monitor with new settings
   monitorEngine.restartMonitor(req.params.id);
@@ -155,6 +163,8 @@ router.delete("/:id", authMiddleware, (req, res) => {
   }
 
   monitorEngine.removeMonitor(req.params.id);
+  incidentManager.resetCounter(req.params.id);
+  heartbeat.resetMonitor(req.params.id);
   Monitor.delete(req.params.id);
 
   res.json({ message: "Monitor deleted" });
@@ -169,6 +179,8 @@ router.post("/:id/pause", authMiddleware, (req, res) => {
 
   Monitor.update(req.params.id, { active: false });
   monitorEngine.removeMonitor(req.params.id);
+  incidentManager.resetCounter(req.params.id);
+  heartbeat.resetMonitor(req.params.id);
 
   res.json({ message: "Monitor paused" });
 });
@@ -181,6 +193,8 @@ router.post("/:id/resume", authMiddleware, (req, res) => {
   }
 
   Monitor.update(req.params.id, { active: true });
+  incidentManager.resetCounter(req.params.id);
+  heartbeat.resetMonitor(req.params.id);
   monitorEngine.addMonitor(req.params.id);
 
   res.json({ message: "Monitor resumed" });

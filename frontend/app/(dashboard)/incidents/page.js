@@ -20,6 +20,7 @@ export default function IncidentsPage() {
   const { data, loading, refresh } = usePolling(() => getIncidents({ page, limit: 20, ...(statusFilter && { status: statusFilter }) }), 30000, [page, statusFilter]);
   const [deleteId, setDeleteId] = useState(null);
   const [deleting, setDeleting] = useState(false);
+  const [error, setError] = useState('');
 
   if (loading && !data) return <PageLoader />;
 
@@ -28,8 +29,9 @@ export default function IncidentsPage() {
 
   const handleDelete = async () => {
     if (!deleteId) return;
+    setError('');
     setDeleting(true);
-    try { await deleteIncident(deleteId); refresh(); } catch {}
+    try { await deleteIncident(deleteId); refresh(); } catch (err) { setError(err.message); }
     setDeleting(false);
     setDeleteId(null);
   };
@@ -45,6 +47,8 @@ export default function IncidentsPage() {
           <Button><Plus size={16} /> Create Incident</Button>
         </Link>
       </div>
+
+      {error && <div className="p-3 rounded-lg bg-red-500/10 text-red-500 text-sm">{error}</div>}
 
       <div className="flex gap-2">
         {['', 'investigating', 'identified', 'monitoring', 'resolved'].map(s => (

@@ -12,6 +12,8 @@ async function checkPing(monitor) {
 
   try {
     const host = monitor.hostname || new URL(monitor.url).hostname;
+    // defense in depth: a leading "-" would be read as a ping option
+    if (host.trimStart().startsWith("-")) throw new Error("Invalid hostname");
     const timeoutSec = Math.ceil((monitor.timeout_ms || 10000) / 1000);
 
     const res = await ping.promise.probe(host, {

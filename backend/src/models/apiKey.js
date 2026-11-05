@@ -2,22 +2,35 @@ const { getDb } = require("../database/connection");
 const { generateId, nowISO } = require("../utils/helpers");
 const { generateApiKey, hashApiKey } = require("../utils/crypto");
 
+// permissions is stored as JSON text; callers always see an array
+function withPermissions(row) {
+  if (!row) return row;
+  let permissions = [];
+  try {
+    permissions = JSON.parse(row.permissions) || [];
+  } catch {}
+  return { ...row, permissions };
+}
+
 const ApiKey = {
-  create({ name, created_by, expires_at }) {
+  create({ name, created_by, expires_at, permissions = ["read"] }) {
     const db = getDb();
     const { key, prefix, keyHash } = generateApiKey();
     const id = generateId();
+    const created_at = nowISO();
     db.prepare(`
-      INSERT INTO api_keys (id, name, key_hash, prefix, created_by, expires_at, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
-    `).run(id, name, keyHash, prefix, created_by, expires_at || null, nowISO());
+      INSERT INTO api_keys (id, name, key_hash, prefix, created_by, expires_at, created_at, permissions)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(id, name, keyHash, prefix, created_by, expires_at || null, created_at, JSON.stringify(permissions));
     // Return the key only once
-    return { id, name, prefix, key, expires_at, created_at: nowISO() };
+    return { id, name, prefix, key, permissions, expires_at: expires_at || null, created_at };
   },
 
   findById(id) {
     const db = getDb();
-    return db.prepare("SELECT id, name, prefix, last_used, created_by, expires_at, created_at FROM api_keys WHERE id = ?").get(id);
+    return withPermissions(
+      db.prepare("SELECT id, name, prefix, permissions, last_used, created_by, expires_at, created_at FROM api_keys WHERE id = ?").get(id)
+    );
   },
 
   findByKey(key) {
@@ -29,14 +42,14 @@ const ApiKey = {
       const expires = new Date(row.expires_at);
       if (now > expires) return null;
     }
-    return row;
+    return withPermissions(row);
   },
 
   findAll() {
     const db = getDb();
     return db.prepare(
-      "SELECT id, name, prefix, last_used, created_by, expires_at, created_at FROM api_keys ORDER BY created_at DESC"
-    ).all();
+      "SELECT id, name, prefix, permissions, last_used, created_by, expires_at, created_at FROM api_keys ORDER BY created_at DESC"
+    ).all().map(withPermissions);
   },
 
   updateLastUsed(id) {

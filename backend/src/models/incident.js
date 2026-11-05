@@ -7,9 +7,9 @@ const Incident = {
     const id = generateId();
     const now = nowISO();
     db.prepare(`
-      INSERT INTO incidents (id, monitor_id, title, type, status, started_at, created_by, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(id, monitor_id || null, title, type || "auto", status || "investigating", now, created_by || null, now, now);
+      INSERT INTO incidents (id, monitor_id, title, type, status, started_at, resolved_at, created_by, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(id, monitor_id || null, title, type || "auto", status || "investigating", now, status === "resolved" ? now : null, created_by || null, now, now);
     return this.findById(id);
   },
 
@@ -60,9 +60,18 @@ const Incident = {
   update(id, fields) {
     const db = getDb();
     const allowed = ["title", "status", "resolved_at"];
+    const changes = { ...fields };
+    // resolved_at follows status: stamped when the incident first reaches resolved, cleared on reopen
+    if (changes.status !== undefined && changes.resolved_at === undefined) {
+      if (changes.status !== "resolved") {
+        changes.resolved_at = null;
+      } else if (this.findById(id)?.status !== "resolved") {
+        changes.resolved_at = nowISO();
+      }
+    }
     const sets = [];
     const values = [];
-    for (const [key, val] of Object.entries(fields)) {
+    for (const [key, val] of Object.entries(changes)) {
       if (allowed.includes(key) && val !== undefined) {
         sets.push(`${key} = ?`);
         values.push(val);

@@ -1,16 +1,20 @@
 const Monitor = require("../models/monitor");
 const MonitorCheck = require("../models/monitorCheck");
 const Incident = require("../models/incident");
+const Maintenance = require("../models/maintenance");
 const notifier = require("./notifier");
-const logger = require("../utils/helpers");
+const logger = require("../utils/logger");
 const { nowISO } = require("../utils/helpers");
 
 // Track last heartbeat received for each push monitor
 const lastHeartbeat = new Map();
+// When the last "missed" down check was recorded, so one is written per push interval, not per tick
+const lastMissRecorded = new Map();
 let checkInterval = null;
 
 function recordHeartbeat(monitorId) {
   lastHeartbeat.set(monitorId, Date.now());
+  lastMissRecorded.delete(monitorId);
 
   // Record an UP check
   MonitorCheck.create({
@@ -39,6 +43,12 @@ function recordHeartbeat(monitorId) {
   }
 }
 
+// Forget a monitor's timing (pause/resume/delete); the next tick restarts its grace period
+function resetMonitor(monitorId) {
+  lastHeartbeat.delete(monitorId);
+  lastMissRecorded.delete(monitorId);
+}
+
 function checkMissedHeartbeats() {
   const pushMonitors = Monitor.findAll({ active: true }).filter(
     (m) => m.type === "push"
@@ -52,11 +62,17 @@ function checkMissedHeartbeats() {
     // Allow 1.5x grace period
     const gracePeriod = expectedInterval * 1.5;
 
-    if (lastBeat && now - lastBeat > gracePeriod) {
-      // Missed heartbeat — check if already in incident
-      const activeIncident = Incident.findActiveByMonitorId(monitor.id);
-      if (!activeIncident) {
-        // Record a DOWN check
+    // New, resumed or in-maintenance monitors: (re)start the grace period instead of alerting on stale time
+    if (lastBeat === undefined || Maintenance.isMonitorInMaintenance(monitor.id)) {
+      lastHeartbeat.set(monitor.id, now);
+      continue;
+    }
+
+    if (now - lastBeat > gracePeriod) {
+      // Uptime is derived from check counts, so keep recording a down check each push interval while missed
+      const lastMiss = lastMissRecorded.get(monitor.id);
+      if (lastMiss === undefined || now - lastMiss >= expectedInterval) {
+        lastMissRecorded.set(monitor.id, now);
         MonitorCheck.create({
           monitor_id: monitor.id,
           status: "down",
@@ -65,7 +81,10 @@ function checkMissedHeartbeats() {
           error_message: `No heartbeat received for ${Math.round((now - lastBeat) / 1000)}s`,
           metadata: { type: "heartbeat_missed" },
         });
+      }
 
+      const activeIncident = Incident.findActiveByMonitorId(monitor.id);
+      if (!activeIncident) {
         const incident = Incident.create({
           monitor_id: monitor.id,
           title: `${monitor.name} heartbeat missed`,
@@ -93,20 +112,10 @@ function start() {
   // Check for missed heartbeats every 30 seconds
   checkInterval = setInterval(checkMissedHeartbeats, 30000);
 
-  // Initialize last heartbeat times for existing push monitors
-  const pushMonitors = Monitor.findAll({ active: true }).filter(
-    (m) => m.type === "push"
-  );
+  // Grace period starts at boot: after downtime the last stored check is old and would flag every push monitor as missed
   const now = Date.now();
-  for (const monitor of pushMonitors) {
-    // Check if there's a recent check; if so, use that as last heartbeat
-    const latestCheck = MonitorCheck.getLatestByMonitorId(monitor.id);
-    if (latestCheck) {
-      lastHeartbeat.set(monitor.id, new Date(latestCheck.created_at).getTime());
-    } else {
-      // Set to now so we don't immediately trigger on startup
-      lastHeartbeat.set(monitor.id, now);
-    }
+  for (const monitor of Monitor.findAll({ active: true })) {
+    if (monitor.type === "push") lastHeartbeat.set(monitor.id, now);
   }
 }
 
@@ -116,9 +125,10 @@ function stop() {
     checkInterval = null;
   }
   lastHeartbeat.clear();
+  lastMissRecorded.clear();
 }
 
 function startExpiredCheck() { start(); }
 function stopExpiredCheck() { stop(); }
 
-module.exports = { recordHeartbeat, start, stop, startExpiredCheck, stopExpiredCheck };
+module.exports = { recordHeartbeat, resetMonitor, start, stop, startExpiredCheck, stopExpiredCheck };

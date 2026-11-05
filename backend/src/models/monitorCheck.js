@@ -87,12 +87,28 @@ const MonitorCheck = {
     return row?.avg_rt ? Math.round(row.avg_rt) : 0;
   },
 
-  getResponseTimeSeries(monitorId, since, bucketMinutes = 60) {
+  // Uptime % since `since` for every monitor in one query: { [monitorId]: pct }; monitors without checks are absent
+  getUptimeByMonitor(since) {
     const db = getDb();
-    // Group by time buckets
+    const rows = db.prepare(`
+      SELECT monitor_id,
+        SUM(CASE WHEN status = 'up' OR status = 'degraded' THEN 1 ELSE 0 END) * 100.0 / COUNT(*) as pct
+      FROM monitor_checks
+      WHERE created_at >= ?
+      GROUP BY monitor_id
+    `).all(since);
+    return Object.fromEntries(rows.map((r) => [r.monitor_id, parseFloat(r.pct.toFixed(3))]));
+  },
+
+  getResponseTimeSeries(monitorId, since) {
+    const db = getDb();
+    // Bucket size follows the range (UTC, no Z): minute for <=1h, hour for <=7d, day beyond.
+    // The 1h/7d limits have a little slack because `since` is computed slightly before this call.
+    const spanMin = (Date.now() - Date.parse(since)) / 60000;
+    const fmt = spanMin <= 61 ? "%Y-%m-%d %H:%M:00" : spanMin <= 7 * 1440 + 1 ? "%Y-%m-%d %H:00:00" : "%Y-%m-%d 00:00:00";
     return db.prepare(`
       SELECT 
-        strftime('%Y-%m-%d %H:00:00', created_at) as bucket,
+        strftime(?, created_at) as bucket,
         AVG(response_time_ms) as avg_rt,
         MIN(response_time_ms) as min_rt,
         MAX(response_time_ms) as max_rt,
@@ -101,7 +117,7 @@ const MonitorCheck = {
       WHERE monitor_id = ? AND created_at >= ?
       GROUP BY bucket
       ORDER BY bucket ASC
-    `).all(monitorId, since);
+    `).all(fmt, monitorId, since);
   },
 
   getStatusDistribution(monitorId, since) {

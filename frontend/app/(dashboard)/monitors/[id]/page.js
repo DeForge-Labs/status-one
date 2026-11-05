@@ -28,6 +28,7 @@ export default function MonitorDetailPage({ params }) {
   const [deleting, setDeleting] = useState(false);
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState(null);
+  const [error, setError] = useState('');
 
   const { data: monitorData, loading, refresh } = usePolling(() => getMonitor(id), 15000, [id]);
   const { data: checksData, refresh: refreshChecks } = usePolling(() => getMonitorChecks(id, checksPage, 20), 15000, [id, checksPage]);
@@ -47,16 +48,20 @@ export default function MonitorDetailPage({ params }) {
 
   const handleDelete = async () => {
     setDeleting(true);
-    try { await deleteMonitor(id); router.push('/monitors'); } catch {}
+    setError('');
+    try { await deleteMonitor(id); router.push('/monitors'); } catch (err) { setError(err.message); setShowDelete(false); }
     setDeleting(false);
   };
 
   const handleToggle = async () => {
+    setError('');
     try {
       if (monitor.active) await pauseMonitor(id);
       else await resumeMonitor(id);
       refresh();
-    } catch {}
+    } catch (err) {
+      setError(err.message);
+    }
   };
 
   const handleTest = async () => {
@@ -77,7 +82,7 @@ export default function MonitorDetailPage({ params }) {
   const uptimeDays = availData?.data?.daily || [];
 
   const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000/api';
-  const heartbeatUrl = monitor.type === 'push' && monitor.push_token ? `${API_BASE.replace('/api', '')}/api/monitors/heartbeat/${monitor.push_token}` : null;
+  const heartbeatUrl = monitor.type === 'push' && monitor.push_token ? `${API_BASE.replace(/\/api\/?$/, '')}/api/monitors/heartbeat/${monitor.push_token}` : null;
 
   return (
     <div className="space-y-6">
@@ -113,6 +118,8 @@ export default function MonitorDetailPage({ params }) {
           </Button>
         </div>
       </div>
+
+      {error && <div className="p-3 rounded-lg bg-red-500/10 text-red-500 text-sm">{error}</div>}
 
       {/* Test Result */}
       {testResult && (
@@ -182,7 +189,7 @@ export default function MonitorDetailPage({ params }) {
             ))}
           </div>
         </div>
-        <ResponseTimeChart data={rtData?.series || []} />
+        <ResponseTimeChart data={rtData?.series || []} period={period} />
       </Card>
 
       {/* Recent Checks */}
